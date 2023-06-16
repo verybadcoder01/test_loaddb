@@ -1,0 +1,4 @@
+*.xlsx
+.~lock.sample.xlsx#
+main
+*.idea
