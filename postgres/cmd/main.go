@@ -1,7 +1,7 @@
 package main
 
 import (
-	"dbload/models"
+	"dbload/postgres/models"
 	"fmt"
 	"github.com/xuri/excelize/v2"
 	"gorm.io/datatypes"
