@@ -73,7 +73,7 @@ func NewClient(row *models.DenormalizedExcel) models.DClients {
 }
 
 func main() {
-	db, err := gorm.Open(postgres.Open("postgres://postgres:8Bm4e202@localhost:5432/pizza_shop"), &gorm.Config{DisableForeignKeyConstraintWhenMigrating: false, IgnoreRelationshipsWhenMigrating: false})
+	db, err := gorm.Open(postgres.Open("postgres://user:password@localhost:5432/pizza_shop"), &gorm.Config{DisableForeignKeyConstraintWhenMigrating: false, IgnoreRelationshipsWhenMigrating: false})
 	if err != nil {
 		panic(err)
 	}
