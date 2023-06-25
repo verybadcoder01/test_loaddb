@@ -13,7 +13,7 @@ import (
 )
 
 func GetMessage() string {
-	return fmt.Sprintf("message %v", rand.Int())
+	return fmt.Sprintf("message %v\n", rand.Int())
 }
 
 const (
@@ -22,68 +22,67 @@ const (
 	ALLOK
 )
 
-func writeToKafka(ctx context.Context, holder *thread.ThreadsHolder, conn *kafka.Conn, wg *sync.WaitGroup, maxMsg int, threadId int) {
-	defer func() {
-		holder.FinishThread(threadId)
-	}()
-	defer wg.Done()
-	// will never time out
-	err := conn.SetWriteDeadline(time.Time{})
-	if err != nil {
-		log.Println(err)
-	}
-	for i := 0; i < maxMsg; i++ {
-		msg := GetMessage()
-		_, err = conn.WriteMessages(kafka.Message{Value: []byte(msg)})
+func writeToKafka(ctx context.Context, holder *thread.ThreadsHolder, conn *kafka.Conn, maxMsg int, threadId int) {
+	defer holder.FinishThread(threadId)
+	select {
+	case <-ctx.Done():
+		log.Println("here")
+		return
+	default:
+		// will never time out
+		err := conn.SetWriteDeadline(time.Time{})
 		if err != nil {
-			// кафка упала, надо об этом сказать
-			log.Printf("error occured in thread %v\n", threadId)
 			log.Println(err)
-			// TODO: понять, какого черта 3 строки ниже кладут ВСЕ
-			//holder.Mu.Lock()
-			//holder.Threads[threadId].AppendBuffer(msg)
-			//holder.Mu.Unlock()
-			//holder[threadId].CriticalChan <- customErrors.NewCriticalError(err, threadId)
-			holder.Threads[threadId].StatusChan <- thread.DEAD
-		} else {
-			holder.Threads[threadId].StatusChan <- thread.OK
 		}
+		for i := 0; i < maxMsg; i++ {
+			msg := GetMessage()
+			_, err = conn.WriteMessages(kafka.Message{Value: []byte(msg)})
+			if err != nil {
+				// кафка упала, надо об этом сказать
+				log.Printf("error occurred in thread %v\n", threadId)
+				log.Println(err)
+				// TODO: crete listener for this channel
+				//holder[threadId].CriticalChan <- customErrors.NewCriticalError(err, threadId)
+				holder.Threads[threadId].StatusChan <- thread.DEAD
+				log.Printf("goroutine %v write to channel\n", threadId)
+				// do I have a gazing bug here or is it just my fears? I wasn't able to determine
+				holder.AppendBuffer(threadId, msg)
+			} else {
+				holder.Threads[threadId].StatusChan <- thread.OK
+			}
+		}
+		holder.Threads[threadId].StatusChan <- thread.FINISHED
+		close(holder.Threads[threadId].StatusChan)
 	}
-	holder.Threads[threadId].StatusChan <- thread.FINISHED
-	close(holder.Threads[threadId].StatusChan)
 }
 
 func StartWriting(conn *kafka.Conn, conf config.Config) {
-	var wg sync.WaitGroup
 	var holder thread.ThreadsHolder
 	ctx, StopThreads := context.WithCancel(context.Background())
 	for i := 0; i < conf.MaxThreads; i++ {
 		c := make(chan error)
 		s := make(chan thread.Status, 100)
+		holder.Mu = append(holder.Mu, &sync.RWMutex{})
 		holder.Threads = append(holder.Threads, thread.Thread{IsDone: false, CriticalChan: c, MsgBuffer: []string{}, DumpPath: conf.DumpFile, StatusChan: s, MaxBufSize: conf.MaxBufSize})
 	}
 	for i := 0; i < conf.MaxThreads; i++ {
-		wg.Add(1)
-		go writeToKafka(ctx, &holder, conn, &wg, conf.MaxMessagesPerThread, i)
+		go writeToKafka(ctx, &holder, conn, conf.MaxMessagesPerThread, i)
 	}
-	wg.Add(1)
 	c := make(chan int)
-	go StartArbitr(&wg, conf, &holder, c)
+	go StartArbitr(conf, &holder, c)
 	log.Println("all goroutines are running")
 	res := <-c
 	if res == ALLDEAD {
-		log.Fatalf("system dead.")
+		log.Println("system dead.")
 	} else if res == ALLRESTART {
 		//TODO: restart all
 	} else {
 		log.Println("all good, all messages sent!")
 	}
 	StopThreads()
-	wg.Wait()
 }
 
-func StartArbitr(wg *sync.WaitGroup, conf config.Config, holder *thread.ThreadsHolder, resChan chan int) {
-	defer wg.Done()
+func StartArbitr(conf config.Config, holder *thread.ThreadsHolder, resChan chan int) {
 	deadCnt := 0
 outer:
 	for {
@@ -103,7 +102,16 @@ outer:
 	attempts := 0
 	for range ticker.C {
 		log.Printf("retry attempt %v\n", attempts)
+		attempts++
+		if attempts > conf.MaxDeadTimeOut {
+			break
+		}
 		newConn, err := kafka.DialLeader(context.Background(), "tcp", conf.Kafka, conf.KafkaTopic, conf.KafkaPartition)
+		if err != nil {
+			log.Println("fail!")
+			retrySuccessfull = false
+			continue
+		}
 		_, err = newConn.ReadPartitions()
 		if err != nil {
 			log.Println("fail!")
@@ -112,10 +120,6 @@ outer:
 			log.Println("success!")
 			retrySuccessfull = true
 			ticker.Stop()
-			break
-		}
-		attempts++
-		if attempts > conf.MaxDeadTimeOut {
 			break
 		}
 	}

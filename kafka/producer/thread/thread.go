@@ -25,13 +25,14 @@ type Thread struct {
 func (t *Thread) AppendBuffer(msg string) {
 	if len(t.MsgBuffer) >= t.MaxBufSize {
 		t.DumpBuffer()
+		t.MsgBuffer = []string{}
 	} else {
 		t.MsgBuffer = append(t.MsgBuffer, msg)
 	}
 }
 
 func (t *Thread) DumpBuffer() {
-	file, err := os.Open(t.DumpPath)
+	file, err := os.OpenFile(t.DumpPath, os.O_WRONLY|os.O_APPEND|os.O_RDONLY, 0666)
 	if err != nil {
 		log.Println(err)
 	}

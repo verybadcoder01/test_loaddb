@@ -24,6 +24,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	// TODO: logging package with logrus + lumberjack
 	log.SetOutput(file)
 	conn, err := kafka.DialLeader(context.Background(), "tcp", conf.Kafka, conf.KafkaTopic, conf.KafkaPartition)
 	if err != nil {
