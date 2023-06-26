@@ -1,5 +1,5 @@
 kafka: "localhost:9092"
-kafkaTopic: "bench-test"
+kafkaTopic: "test-project"
 kafkaPartition: 0
 maxThreads: 4
 maxMessagesPerThread: 40000
@@ -7,3 +7,5 @@ dumpFile: "./dump.txt"
 maxBufSize: 1000
 maxDeadThreads: 2
 maxDeadTimeOut: 30
+logPath: "./log.txt"
+logLevel: "info"

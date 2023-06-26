@@ -6,7 +6,7 @@ import (
 	"dbload/kafka/producer/thread"
 	"fmt"
 	"github.com/segmentio/kafka-go"
-	"log"
+	log "github.com/sirupsen/logrus"
 	"math/rand"
 	"sync"
 	"time"
@@ -16,6 +16,7 @@ func GetMessage() string {
 	return fmt.Sprintf("message %v\n", rand.Int())
 }
 
+// arbitr statuses
 const (
 	ALLDEAD = iota
 	ALLRESTART
@@ -26,25 +27,24 @@ func writeToKafka(ctx context.Context, holder *thread.ThreadsHolder, conn *kafka
 	defer holder.FinishThread(threadId)
 	select {
 	case <-ctx.Done():
-		log.Println("here")
 		return
 	default:
 		// will never time out
 		err := conn.SetWriteDeadline(time.Time{})
 		if err != nil {
-			log.Println(err)
+			log.Errorln(err)
 		}
 		for i := 0; i < maxMsg; i++ {
 			msg := GetMessage()
 			_, err = conn.WriteMessages(kafka.Message{Value: []byte(msg)})
 			if err != nil {
 				// кафка упала, надо об этом сказать
-				log.Printf("error occurred in thread %v\n", threadId)
-				log.Println(err)
+				log.Errorf("error occurred in thread %v\n", threadId)
+				log.Errorln(err)
 				// TODO: crete listener for this channel
 				//holder[threadId].CriticalChan <- customErrors.NewCriticalError(err, threadId)
 				holder.Threads[threadId].StatusChan <- thread.DEAD
-				log.Printf("goroutine %v write to channel\n", threadId)
+				log.Debugf("goroutine %v write to channel\n", threadId)
 				// do I have a gazing bug here or is it just my fears? I wasn't able to determine
 				holder.AppendBuffer(threadId, msg)
 			} else {
@@ -70,66 +70,68 @@ func StartWriting(conn *kafka.Conn, conf config.Config) {
 	}
 	c := make(chan int)
 	go StartArbitr(conf, &holder, c)
-	log.Println("all goroutines are running")
+	log.Infoln("all goroutines are running")
 	res := <-c
 	if res == ALLDEAD {
-		log.Println("system dead.")
+		// TODO: I have to keep listening to messages and dumping them, while allowing to be restarted and reconnected
+		log.Errorln("system dead.")
 	} else if res == ALLRESTART {
 		//TODO: restart all
 	} else {
-		log.Println("all good, all messages sent!")
+		log.Infoln("all good, all messages sent!")
 	}
 	StopThreads()
 }
 
 func StartArbitr(conf config.Config, holder *thread.ThreadsHolder, resChan chan int) {
 	deadCnt := 0
-outer:
 	for {
 		if holder.CountType(thread.FINISHED) == len(holder.Threads) {
-			log.Println("finish arbitr")
+			log.Infoln("finish arbitr")
 			resChan <- ALLOK
 			return
 		}
 		deadCnt = holder.CountType(thread.DEAD)
 		if deadCnt > conf.MaxDeadThreads {
-			break outer
+			log.Errorf("there are %v dead threads but maximum of %v is allowed", deadCnt, conf.MaxDeadThreads)
+			break
 		}
 	}
-	log.Println("starting retry")
+	log.Infoln("starting retry")
 	retrySuccessfull := false
 	ticker := time.NewTicker(1 * time.Second)
 	attempts := 0
 	for range ticker.C {
-		log.Printf("retry attempt %v\n", attempts)
+		log.Infof("retry attempt %v\n", attempts)
 		attempts++
 		if attempts > conf.MaxDeadTimeOut {
 			break
 		}
 		newConn, err := kafka.DialLeader(context.Background(), "tcp", conf.Kafka, conf.KafkaTopic, conf.KafkaPartition)
 		if err != nil {
-			log.Println("fail!")
+			log.Infof("fail!")
 			retrySuccessfull = false
 			continue
 		}
 		_, err = newConn.ReadPartitions()
 		if err != nil {
-			log.Println("fail!")
+			log.Infof("fail!")
 			retrySuccessfull = false
 		} else {
-			log.Println("success!")
+			log.Infof("success!")
 			retrySuccessfull = true
 			ticker.Stop()
 			break
 		}
 	}
-	log.Printf("retry success is %v\n", retrySuccessfull)
+	// these are errors, so they would be visible with higher logging levels
+	log.Errorf("retry success is %v\n", retrySuccessfull)
 	if !retrySuccessfull {
-		log.Println("retry failed, killing all threads")
+		log.Errorln("retry failed, killing all threads")
 		resChan <- ALLDEAD
 		return
 	} else {
-		log.Println("retry ok, restarting everything")
+		log.Errorln("retry ok, restarting everything")
 		resChan <- ALLRESTART
 		return
 	}
