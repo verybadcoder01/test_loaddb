@@ -12,7 +12,8 @@ type Config struct {
 	KafkaPartition       int    `yaml:"kafkaPartition"`
 	MaxThreads           int    `yaml:"maxThreads"`
 	MaxMessagesPerThread int    `yaml:"maxMessagesPerThread"`
-	DumpFile             string `yaml:"dumpFile"`
+	MsgBatchSize         int    `yaml:"msgBatchSize"`
+	DumpDir              string `yaml:"dumpDir"`
 	MaxBufSize           int    `yaml:"maxBufSize"`
 	MaxDeadThreads       int    `yaml:"maxDeadThreads"`
 	MaxDeadTimeOut       int    `yaml:"maxDeadTimeOut"`

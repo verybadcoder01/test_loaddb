@@ -26,18 +26,18 @@ func (t *ThreadsHolder) CountType(sig Status) int {
 }
 
 func (t *ThreadsHolder) FinishThread(id int) {
-	t.Mu[id].Lock()
 	log.Infof("finishing thread %v", id)
+	t.Mu[id].Lock()
 	defer t.Mu[id].Unlock()
 	t.Threads[id].FinishThread()
 }
 
-func (t *ThreadsHolder) AppendBuffer(id int, msg string) {
+func (t *ThreadsHolder) AppendBuffer(id int, msg ...string) {
 	t.Mu[id].Lock()
 	log.Debugf("mutex %v locked for writing by goroutine %v\n", id, id)
 	defer func() {
 		t.Mu[id].Unlock()
 		log.Debugf("mutex %v unlocked by goroutine %v\n", id, id)
 	}()
-	t.Threads[id].AppendBuffer(msg)
+	t.Threads[id].AppendBuffer(msg...)
 }

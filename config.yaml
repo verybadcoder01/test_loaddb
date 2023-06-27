@@ -2,10 +2,11 @@ kafka: "localhost:9092"
 kafkaTopic: "test-project"
 kafkaPartition: 0
 maxThreads: 4
-maxMessagesPerThread: 40000
-dumpFile: "./dump.txt"
+maxMessagesPerThread: 100000
+msgBatchSize: 10
+dumpDir: "./dumps/"
 maxBufSize: 1000
 maxDeadThreads: 2
 maxDeadTimeOut: 30
 logPath: "./log.txt"
-logLevel: "info"
+logLevel: "debug"

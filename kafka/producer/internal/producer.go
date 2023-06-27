@@ -23,34 +23,38 @@ const (
 	ALLOK
 )
 
-func writeToKafka(ctx context.Context, holder *thread.ThreadsHolder, conn *kafka.Conn, maxMsg int, threadId int) {
+func writeToKafka(ctx context.Context, holder *thread.ThreadsHolder, writer *kafka.Writer, maxMsg int, batchSize int, threadId int) {
 	defer holder.FinishThread(threadId)
 	select {
 	case <-ctx.Done():
 		return
 	default:
-		// will never time out
-		err := conn.SetWriteDeadline(time.Time{})
-		if err != nil {
-			log.Errorln(err)
-		}
-		for i := 0; i < maxMsg; i++ {
-			msg := GetMessage()
-			_, err = conn.WriteMessages(kafka.Message{Value: []byte(msg)})
+		for i := 0; i < maxMsg; {
+			var batch []kafka.Message
+			var data []string // in case we need dumping
+			for j := 0; j < batchSize; j++ {
+				msg := GetMessage()
+				batch = append(batch, kafka.Message{Value: []byte(msg)})
+				data = append(data, msg)
+			}
+			i += batchSize
+			err := writer.WriteMessages(ctx, batch...)
 			if err != nil {
 				// кафка упала, надо об этом сказать
-				log.Errorf("error occurred in thread %v\n", threadId)
+				log.Errorf("error occurred in thread %v", threadId)
 				log.Errorln(err)
-				// TODO: crete listener for this channel
-				//holder[threadId].CriticalChan <- customErrors.NewCriticalError(err, threadId)
 				holder.Threads[threadId].StatusChan <- thread.DEAD
-				log.Debugf("goroutine %v write to channel\n", threadId)
+				log.Debugf("goroutine %v write to channel", threadId)
 				// do I have a gazing bug here or is it just my fears? I wasn't able to determine
-				holder.AppendBuffer(threadId, msg)
+				holder.AppendBuffer(threadId, data...)
 			} else {
 				holder.Threads[threadId].StatusChan <- thread.OK
+				if i%100 == 0 {
+					log.Debugf("thread %v had sent %v messages", threadId, i)
+				}
 			}
 		}
+		log.Debugf("thread %v send finishing signal", threadId)
 		holder.Threads[threadId].StatusChan <- thread.FINISHED
 		close(holder.Threads[threadId].StatusChan)
 	}
@@ -60,13 +64,19 @@ func StartWriting(conn *kafka.Conn, conf config.Config) {
 	var holder thread.ThreadsHolder
 	ctx, StopThreads := context.WithCancel(context.Background())
 	for i := 0; i < conf.MaxThreads; i++ {
-		c := make(chan error)
 		s := make(chan thread.Status, 100)
 		holder.Mu = append(holder.Mu, &sync.RWMutex{})
-		holder.Threads = append(holder.Threads, thread.Thread{IsDone: false, CriticalChan: c, MsgBuffer: []string{}, DumpPath: conf.DumpFile, StatusChan: s, MaxBufSize: conf.MaxBufSize})
+		holder.Threads = append(holder.Threads, thread.Thread{IsDone: false, MsgBuffer: []string{}, DumpPath: conf.DumpDir + fmt.Sprintf("thread%v_dump.txt", i), StatusChan: s, MaxBufSize: conf.MaxBufSize})
 	}
+	writer := &kafka.Writer{Addr: kafka.TCP(conf.Kafka), Topic: conf.KafkaTopic, Balancer: &kafka.Hash{}, WriteTimeout: 1 * time.Second, RequiredAcks: kafka.RequireAll, AllowAutoTopicCreation: true, BatchSize: conf.MsgBatchSize}
+	defer func(writer *kafka.Writer) {
+		err := writer.Close()
+		if err != nil {
+			log.Errorln(err)
+		}
+	}(writer)
 	for i := 0; i < conf.MaxThreads; i++ {
-		go writeToKafka(ctx, &holder, conn, conf.MaxMessagesPerThread, i)
+		go writeToKafka(ctx, &holder, writer, conf.MaxMessagesPerThread, conf.MsgBatchSize, i)
 	}
 	c := make(chan int)
 	go StartArbitr(conf, &holder, c)
@@ -76,7 +86,7 @@ func StartWriting(conn *kafka.Conn, conf config.Config) {
 		// TODO: I have to keep listening to messages and dumping them, while allowing to be restarted and reconnected
 		log.Errorln("system dead.")
 	} else if res == ALLRESTART {
-		//TODO: restart all
+		// TODO: restart all
 	} else {
 		log.Infoln("all good, all messages sent!")
 	}
@@ -102,7 +112,7 @@ func StartArbitr(conf config.Config, holder *thread.ThreadsHolder, resChan chan 
 	ticker := time.NewTicker(1 * time.Second)
 	attempts := 0
 	for range ticker.C {
-		log.Infof("retry attempt %v\n", attempts)
+		log.Infof("retry attempt %v", attempts)
 		attempts++
 		if attempts > conf.MaxDeadTimeOut {
 			break
@@ -125,7 +135,7 @@ func StartArbitr(conf config.Config, holder *thread.ThreadsHolder, resChan chan 
 		}
 	}
 	// these are errors, so they would be visible with higher logging levels
-	log.Errorf("retry success is %v\n", retrySuccessfull)
+	log.Errorf("retry success is %v", retrySuccessfull)
 	if !retrySuccessfull {
 		log.Errorln("retry failed, killing all threads")
 		resChan <- ALLDEAD

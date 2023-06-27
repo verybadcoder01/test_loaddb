@@ -14,7 +14,7 @@ func measureTimeAndPrintData(start time.Time, conf config.Config, totalMessages 
 	elapsed := time.Since(start)
 	log.Infof("Writing %v messages in every thread using %v threads, so a total of %v messages took %s", conf.MaxMessagesPerThread, conf.MaxThreads, totalMessages, elapsed)
 	log.Infof("So writing one message took about %v milliseconds", float32(elapsed.Milliseconds())/float32(totalMessages))
-	log.Infof("System proccessed about %v messages per minute", float64(totalMessages)/elapsed.Minutes())
+	log.Infof("System proccessed about %f messages per minute", float64(totalMessages)/elapsed.Minutes())
 }
 
 func main() {
