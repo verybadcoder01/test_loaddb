@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"bufio"
 	"context"
 	"dbload/kafka/config"
 	"dbload/kafka/producer/thread"
@@ -8,6 +9,7 @@ import (
 	"github.com/segmentio/kafka-go"
 	log "github.com/sirupsen/logrus"
 	"math/rand"
+	"os"
 	"sync"
 	"time"
 )
@@ -25,27 +27,37 @@ const (
 
 func writeToKafka(ctx context.Context, holder *thread.ThreadsHolder, writer *kafka.Writer, maxMsg int, batchSize int, threadId int) {
 	defer holder.FinishThread(threadId)
-	select {
-	case <-ctx.Done():
-		return
-	default:
-		for i := 0; i < maxMsg; {
+	for i := 0; i < maxMsg; {
+		select {
+		case <-ctx.Done():
+			return
+		default:
 			var batch []kafka.Message
 			var data []string // in case we need dumping
+			// let's check the buffer
+			prevBatch := holder.ReadBatchFromBuffer(threadId, batchSize)
 			for j := 0; j < batchSize; j++ {
+				// but we still have to fetch new messages
 				msg := GetMessage()
 				batch = append(batch, kafka.Message{Value: []byte(msg)})
 				data = append(data, msg)
 			}
 			i += batchSize
-			err := writer.WriteMessages(ctx, batch...)
+			var err error
+			// if there are enough messages in the buffer we should try to write them
+			if len(prevBatch) == batchSize {
+				err = writer.WriteMessages(ctx, prevBatch...)
+			} else {
+				// buffer is empty, writing new ones
+				err = writer.WriteMessages(ctx, batch...)
+			}
 			if err != nil {
-				// кафка упала, надо об этом сказать
+				// kafka is down
 				log.Errorf("error occurred in thread %v", threadId)
 				log.Errorln(err)
 				holder.Threads[threadId].StatusChan <- thread.DEAD
 				log.Debugf("goroutine %v write to channel", threadId)
-				// do I have a gazing bug here or is it just my fears? I wasn't able to determine
+				// it doesn't matter if we tried writing messages from the buffer or the new ones, we should always save the new ones
 				holder.AppendBuffer(threadId, data...)
 			} else {
 				holder.Threads[threadId].StatusChan <- thread.OK
@@ -54,10 +66,30 @@ func writeToKafka(ctx context.Context, holder *thread.ThreadsHolder, writer *kaf
 				}
 			}
 		}
-		log.Debugf("thread %v send finishing signal", threadId)
-		holder.Threads[threadId].StatusChan <- thread.FINISHED
-		close(holder.Threads[threadId].StatusChan)
 	}
+	log.Debugf("thread %v send finishing signal", threadId)
+	holder.Threads[threadId].StatusChan <- thread.FINISHED
+	close(holder.Threads[threadId].StatusChan)
+}
+
+func keepListening(ctx context.Context, holder *thread.ThreadsHolder, batchSz int, threadId int) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			var data []string
+			for i := 0; i < batchSz; i++ {
+				msg := GetMessage()
+				data = append(data, msg)
+			}
+			holder.AppendBuffer(threadId, data...)
+		}
+	}
+}
+
+func DoRestart() {
+	// TODO
 }
 
 func StartWriting(conn *kafka.Conn, conf config.Config) {
@@ -66,7 +98,7 @@ func StartWriting(conn *kafka.Conn, conf config.Config) {
 	for i := 0; i < conf.MaxThreads; i++ {
 		s := make(chan thread.Status, 100)
 		holder.Mu = append(holder.Mu, &sync.RWMutex{})
-		holder.Threads = append(holder.Threads, thread.Thread{IsDone: false, MsgBuffer: []string{}, DumpPath: conf.DumpDir + fmt.Sprintf("thread%v_dump.txt", i), StatusChan: s, MaxBufSize: conf.MaxBufSize})
+		holder.Threads = append(holder.Threads, thread.Thread{IsDone: false, MsgBuffer: []string{}, DumpPath: conf.DumpDir + fmt.Sprintf("thread%v_dump.txt", i), StatusChan: s, MaxBufSize: conf.MaxBufSize, MaxDumpSize: conf.MaxDumpSize})
 	}
 	writer := &kafka.Writer{Addr: kafka.TCP(conf.Kafka), Topic: conf.KafkaTopic, Balancer: &kafka.Hash{}, WriteTimeout: 1 * time.Second, RequiredAcks: kafka.RequireAll, AllowAutoTopicCreation: true, BatchSize: conf.MsgBatchSize}
 	defer func(writer *kafka.Writer) {
@@ -78,19 +110,32 @@ func StartWriting(conn *kafka.Conn, conf config.Config) {
 	for i := 0; i < conf.MaxThreads; i++ {
 		go writeToKafka(ctx, &holder, writer, conf.MaxMessagesPerThread, conf.MsgBatchSize, i)
 	}
-	c := make(chan int)
-	go StartArbitr(conf, &holder, c)
+	arbitrResChan := make(chan int)
+	go StartArbitr(conf, &holder, arbitrResChan)
 	log.Infoln("all goroutines are running")
-	res := <-c
+	// blocks here until arbitr is done
+	res := <-arbitrResChan
+	StopThreads()
 	if res == ALLDEAD {
-		// TODO: I have to keep listening to messages and dumping them, while allowing to be restarted and reconnected
-		log.Errorln("system dead.")
+		ctxL, stopListening := context.WithCancel(context.Background())
+		for i := 0; i < conf.MaxThreads; i++ {
+			go keepListening(ctxL, &holder, conf.MsgBatchSize, i)
+		}
+		log.Errorln("Messages are no more going through, only listening and dumping.")
+		reader := bufio.NewReader(os.Stdin)
+		// until inputted will block and wait forever
+		command, _ := reader.ReadString('\n')
+		stopListening()
+		if command == "restart\n" {
+			DoRestart()
+		} else {
+			log.Errorln("all dead.")
+		}
 	} else if res == ALLRESTART {
-		// TODO: restart all
+		DoRestart()
 	} else {
 		log.Infoln("all good, all messages sent!")
 	}
-	StopThreads()
 }
 
 func StartArbitr(conf config.Config, holder *thread.ThreadsHolder, resChan chan int) {

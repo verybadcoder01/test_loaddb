@@ -14,6 +14,7 @@ type Config struct {
 	MaxMessagesPerThread int    `yaml:"maxMessagesPerThread"`
 	MsgBatchSize         int    `yaml:"msgBatchSize"`
 	DumpDir              string `yaml:"dumpDir"`
+	MaxDumpSize          int    `yaml:"maxDumpSize"` // in megabytes
 	MaxBufSize           int    `yaml:"maxBufSize"`
 	MaxDeadThreads       int    `yaml:"maxDeadThreads"`
 	MaxDeadTimeOut       int    `yaml:"maxDeadTimeOut"`

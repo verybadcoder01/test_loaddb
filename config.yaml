@@ -5,8 +5,9 @@ maxThreads: 4
 maxMessagesPerThread: 100000
 msgBatchSize: 10
 dumpDir: "./dumps/"
+maxDumpSize: 32
 maxBufSize: 1000
 maxDeadThreads: 2
 maxDeadTimeOut: 30
 logPath: "./log.txt"
-logLevel: "debug"
+logLevel: "info"

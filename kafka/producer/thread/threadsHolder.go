@@ -1,6 +1,7 @@
 package thread
 
 import (
+	"github.com/segmentio/kafka-go"
 	log "github.com/sirupsen/logrus"
 	"sync"
 )
@@ -40,4 +41,17 @@ func (t *ThreadsHolder) AppendBuffer(id int, msg ...string) {
 		log.Debugf("mutex %v unlocked by goroutine %v\n", id, id)
 	}()
 	t.Threads[id].AppendBuffer(msg...)
+}
+
+func (t *ThreadsHolder) ReadBatchFromBuffer(id int, batchSz int) []kafka.Message {
+	t.Mu[id].RLock()
+	log.Debugf("mutex %v locked for reading by goroutine %v", id, id)
+	msgs := t.Threads[id].GetBatchFromBuffer(batchSz)
+	t.Mu[id].RUnlock()
+	log.Debugf("mutex %v unlocked for reading by goroutine %v", id, id)
+	var res []kafka.Message
+	for _, msg := range msgs {
+		res = append(res, kafka.Message{Value: []byte(msg)})
+	}
+	return res
 }
