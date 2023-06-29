@@ -19,12 +19,13 @@ func measureTimeAndPrintData(start time.Time, conf config.Config, totalMessages 
 
 func main() {
 	conf := config.ParseConfig()
-	logger.SetupLogging(conf)
-	conn, err := kafka.DialLeader(context.Background(), "tcp", conf.Kafka, conf.KafkaTopic, conf.KafkaPartition)
+	writerLogger := log.New()
+	logger.SetupWriterLogging(conf, writerLogger)
+	_, err := kafka.DialLeader(context.Background(), "tcp", conf.Kafka, conf.KafkaTopic, conf.KafkaPartition)
 	if err != nil {
 		log.Fatal("failed to dial leader:", err)
 	}
 	start := time.Now()
 	defer measureTimeAndPrintData(start, conf, conf.MaxThreads*conf.MaxMessagesPerThread)
-	internal.StartWriting(conn, conf)
+	internal.StartWriting(writerLogger, conf)
 }

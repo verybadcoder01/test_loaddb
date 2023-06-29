@@ -7,9 +7,9 @@ import (
 	"time"
 )
 
-func SetupLogging(conf config.Config) {
-	log.SetOutput(&lumberjack.Logger{
-		Filename:   conf.LogPath,
+func SetupWriterLogging(conf config.Config, logger *log.Logger) {
+	logger.SetOutput(&lumberjack.Logger{
+		Filename:   conf.WriterLogPath,
 		MaxSize:    32, // megabytes
 		MaxBackups: 2,
 		MaxAge:     28,   //days
@@ -17,23 +17,56 @@ func SetupLogging(conf config.Config) {
 	})
 	switch conf.LogLevel {
 	case "trace":
-		log.SetLevel(log.TraceLevel)
+		logger.SetLevel(log.TraceLevel)
 	case "debug":
-		log.SetLevel(log.DebugLevel)
+		logger.SetLevel(log.DebugLevel)
 	case "info":
-		log.SetLevel(log.InfoLevel)
+		logger.SetLevel(log.InfoLevel)
 	case "warn":
-		log.SetLevel(log.WarnLevel)
+		logger.SetLevel(log.WarnLevel)
 	case "error":
-		log.SetLevel(log.ErrorLevel)
+		logger.SetLevel(log.ErrorLevel)
 	case "fatal":
-		log.SetLevel(log.FatalLevel)
+		logger.SetLevel(log.FatalLevel)
 	case "panic":
-		log.SetLevel(log.PanicLevel)
+		logger.SetLevel(log.PanicLevel)
 	default:
 		panic("unknown logging level. Check the config!")
 	}
-	log.SetFormatter(&log.TextFormatter{
+	logger.SetFormatter(&log.TextFormatter{
+		PadLevelText:    true,
+		DisableColors:   true,
+		TimestampFormat: time.DateTime,
+	})
+}
+
+func SetupReaderLogging(conf config.Config, logger *log.Logger) {
+	logger.SetOutput(&lumberjack.Logger{
+		Filename:   conf.ReaderLogPath,
+		MaxSize:    32,
+		MaxBackups: 2,
+		MaxAge:     28,
+		Compress:   true,
+	})
+	switch conf.LogLevel {
+	case "trace":
+		logger.SetLevel(log.TraceLevel)
+	case "debug":
+		logger.SetLevel(log.DebugLevel)
+	case "info":
+		logger.SetLevel(log.InfoLevel)
+	case "warn":
+		logger.SetLevel(log.WarnLevel)
+	case "error":
+		logger.SetLevel(log.ErrorLevel)
+	case "fatal":
+		logger.SetLevel(log.FatalLevel)
+	case "panic":
+		logger.SetLevel(log.PanicLevel)
+	default:
+		panic("unknown logging level. Check the config!")
+	}
+	logger.SetFormatter(&log.TextFormatter{
 		PadLevelText:    true,
 		DisableColors:   true,
 		TimestampFormat: time.DateTime,

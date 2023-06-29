@@ -9,5 +9,6 @@ maxDumpSize: 16
 maxBufSize: 1000
 maxDeadThreads: 2
 maxDeadTimeOut: 30
-logPath: "./log.txt"
+writerLogPath: "./writer_log.txt"
+readerLogPath: "./reader_log.txt"
 logLevel: "debug"

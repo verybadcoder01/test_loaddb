@@ -26,8 +26,8 @@ const (
 	ALLOK
 )
 
-func writeToKafka(ctx context.Context, holder *thread.ThreadsHolder, writer *kafka.Writer, maxMsg int, batchSize int, threadId int) {
-	defer holder.FinishThread(threadId)
+func writeToKafka(logger *log.Logger, ctx context.Context, holder *thread.ThreadsHolder, writer *kafka.Writer, maxMsg int, batchSize int, threadId int) {
+	defer holder.FinishThread(logger, threadId)
 	for i := 0; i < maxMsg; {
 		select {
 		case <-ctx.Done():
@@ -36,7 +36,7 @@ func writeToKafka(ctx context.Context, holder *thread.ThreadsHolder, writer *kaf
 			var batch []kafka.Message
 			var data []message.Message // in case we need dumping
 			// let's check the buffer
-			prevBatch := holder.ReadBatchFromBuffer(threadId, batchSize)
+			prevBatch := holder.ReadBatchFromBuffer(logger, threadId, batchSize)
 			for j := 0; j < batchSize; j++ {
 				// but we still have to fetch new messages
 				msg := GetMessage()
@@ -48,33 +48,33 @@ func writeToKafka(ctx context.Context, holder *thread.ThreadsHolder, writer *kaf
 			if len(prevBatch) == batchSize {
 				err := writer.WriteMessages(ctx, prevBatch...)
 				if err != nil {
-					log.Errorf("error occurred in thread %v", threadId)
-					log.Errorln(err)
+					logger.Errorf("error occurred in thread %v", threadId)
+					logger.Errorln(err)
 				}
 			}
 			err := writer.WriteMessages(ctx, batch...)
 			if err != nil {
 				// kafka is down
-				log.Errorf("error occurred in thread %v", threadId)
-				log.Errorln(err)
+				logger.Errorf("error occurred in thread %v", threadId)
+				logger.Errorln(err)
 				holder.Threads[threadId].StatusChan <- thread.DEAD
-				log.Debugf("goroutine %v write to channel", threadId)
+				logger.Debugf("goroutine %v write to channel", threadId)
 				// it doesn't matter if we tried writing messages from the buffer or the new ones, we should always save the new ones
-				holder.AppendBuffer(threadId, data...)
+				holder.AppendBuffer(logger, threadId, data...)
 			} else {
 				holder.Threads[threadId].StatusChan <- thread.OK
 				if i%100 == 0 {
-					log.Debugf("thread %v had sent %v messages", threadId, i)
+					logger.Debugf("thread %v had sent %v messages", threadId, i)
 				}
 			}
 		}
 	}
-	log.Debugf("thread %v send finishing signal", threadId)
+	logger.Debugf("thread %v send finishing signal", threadId)
 	holder.Threads[threadId].StatusChan <- thread.FINISHED
 	close(holder.Threads[threadId].StatusChan)
 }
 
-func keepListening(ctx context.Context, holder *thread.ThreadsHolder, batchSz int, threadId int) {
+func keepListening(logger *log.Logger, ctx context.Context, holder *thread.ThreadsHolder, batchSz int, threadId int) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -85,31 +85,31 @@ func keepListening(ctx context.Context, holder *thread.ThreadsHolder, batchSz in
 				msg := GetMessage()
 				data = append(data, msg)
 			}
-			holder.AppendBuffer(threadId, data...)
+			holder.AppendBuffer(logger, threadId, data...)
 		}
 	}
 }
 
-func startWork(ctx context.Context, conf config.Config, holder *thread.ThreadsHolder) int {
+func startWork(logger *log.Logger, ctx context.Context, conf config.Config, holder *thread.ThreadsHolder) int {
 	writer := &kafka.Writer{Addr: kafka.TCP(conf.Kafka), Topic: conf.KafkaTopic, Balancer: &kafka.Hash{}, WriteTimeout: 1 * time.Second, RequiredAcks: kafka.RequireAll, AllowAutoTopicCreation: true, BatchSize: conf.MsgBatchSize}
 	defer func(writer *kafka.Writer) {
 		err := writer.Close()
 		if err != nil {
-			log.Errorln(err)
+			logger.Errorln(err)
 		}
 	}(writer)
 	for i := 0; i < conf.MaxThreads; i++ {
-		go writeToKafka(ctx, holder, writer, conf.MaxMessagesPerThread, conf.MsgBatchSize, i)
+		go writeToKafka(logger, ctx, holder, writer, conf.MaxMessagesPerThread, conf.MsgBatchSize, i)
 	}
 	arbitrResChan := make(chan int)
-	go StartArbitr(conf, holder, arbitrResChan)
-	log.Infoln("all goroutines are running")
+	go StartArbitr(logger, conf, holder, arbitrResChan)
+	logger.Infoln("all goroutines are running")
 	// blocks here until arbitr is done
 	res := <-arbitrResChan
 	return res
 }
 
-func StartWriting(conn *kafka.Conn, conf config.Config) {
+func StartWriting(logger *log.Logger, conf config.Config) {
 	var holder thread.ThreadsHolder
 	for i := 0; i < conf.MaxThreads; i++ {
 		s := make(chan thread.Status, 100)
@@ -118,82 +118,82 @@ func StartWriting(conn *kafka.Conn, conf config.Config) {
 	}
 	for {
 		ctx, StopThreads := context.WithCancel(context.Background())
-		res := startWork(ctx, conf, &holder)
+		res := startWork(logger, ctx, conf, &holder)
 		StopThreads()
 		if res == ALLDEAD {
 			ctxL, stopListening := context.WithCancel(context.Background())
 			for i := 0; i < conf.MaxThreads; i++ {
-				go keepListening(ctxL, &holder, conf.MsgBatchSize, i)
+				go keepListening(logger, ctxL, &holder, conf.MsgBatchSize, i)
 			}
-			log.Errorln("Messages are no more going through, only listening and dumping.")
+			logger.Errorln("Messages are no more going through, only listening and dumping.")
 			reader := bufio.NewReader(os.Stdin)
 			// until inputted will block and wait forever
 			command, _ := reader.ReadString('\n')
 			stopListening()
 			if command == "restart\n" {
-				log.Infof("restart command read, starting now")
+				logger.Infof("restart command read, starting now")
 			} else {
-				log.Errorln("all dead.")
+				logger.Errorln("all dead.")
 				break
 			}
 		} else if res == ALLRESTART {
-			log.Infof("going to restart now")
+			logger.Infof("going to restart now")
 		} else {
-			log.Infoln("all good, all messages sent!")
+			logger.Infoln("all good, all messages sent!")
 			break
 		}
 	}
 }
 
-func StartArbitr(conf config.Config, holder *thread.ThreadsHolder, resChan chan int) {
+func StartArbitr(logger *log.Logger, conf config.Config, holder *thread.ThreadsHolder, resChan chan int) {
 	deadCnt := 0
 	for {
-		if holder.CountType(thread.FINISHED) == len(holder.Threads) {
-			log.Infoln("finish arbitr")
+		if holder.CountType(logger, thread.FINISHED) == len(holder.Threads) {
+			logger.Infoln("finish arbitr")
 			resChan <- ALLOK
 			return
 		}
-		deadCnt = holder.CountType(thread.DEAD)
+		deadCnt = holder.CountType(logger, thread.DEAD)
 		if deadCnt > conf.MaxDeadThreads {
-			log.Errorf("there are %v dead threads but maximum of %v is allowed", deadCnt, conf.MaxDeadThreads)
+			logger.Errorf("there are %v dead threads but maximum of %v is allowed", deadCnt, conf.MaxDeadThreads)
 			break
 		}
 	}
-	log.Infoln("starting retry")
+	logger.Infoln("starting retry")
 	retrySuccessfull := false
 	ticker := time.NewTicker(1 * time.Second)
 	attempts := 0
 	for range ticker.C {
-		log.Infof("retry attempt %v", attempts)
+		logger.Infof("retry attempt %v", attempts)
 		attempts++
 		if attempts > conf.MaxDeadTimeOut {
 			break
 		}
 		newConn, err := kafka.DialLeader(context.Background(), "tcp", conf.Kafka, conf.KafkaTopic, conf.KafkaPartition)
 		if err != nil {
-			log.Infof("fail!")
+			logger.Infof("fail!")
 			retrySuccessfull = false
 			continue
 		}
 		_, err = newConn.ReadPartitions()
 		if err != nil {
-			log.Infof("fail!")
+			logger.Infof("fail!")
 			retrySuccessfull = false
 		} else {
-			log.Infof("success!")
+			logger.Infof("success!")
 			retrySuccessfull = true
 			ticker.Stop()
 			break
 		}
 	}
 	// these are errors, so they would be visible with higher logging levels
-	log.Errorf("retry success is %v", retrySuccessfull)
+	logger.Errorf("retry success is %v", retrySuccessfull)
 	if !retrySuccessfull {
-		log.Errorln("retry failed, killing all threads")
+		logger.Errorln("retry failed, killing all threads")
 		resChan <- ALLDEAD
 		return
 	} else {
-		log.Errorln("retry ok, restarting everything")
+		logger.Errorln("retry ok, restarting everything")
 		resChan <- ALLRESTART
 		return
 	}

@@ -2,38 +2,25 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"dbload/kafka/config"
+	"dbload/kafka/logger"
 	"github.com/segmentio/kafka-go"
-	"log"
+	log "github.com/sirupsen/logrus"
 	"time"
 )
 
 func main() {
-	topic := "quickstart-events"
-	partition := 0
-
-	conn, err := kafka.DialLeader(context.Background(), "tcp", "localhost:9092", topic, partition)
-	if err != nil {
-		log.Fatal("failed to dial leader:", err)
-	}
-
-	conn.SetReadDeadline(time.Now().Add(10 * time.Second))
-	batch := conn.ReadBatch(1, 1e6) // fetch 1B min, 1MB max
-
-	b := make([]byte, 10e3) // 10KB max per message
+	conf := config.ParseConfig()
+	readerLogger := log.New()
+	logger.SetupReaderLogging(conf, readerLogger)
+	reader := kafka.NewReader(kafka.ReaderConfig{Brokers: []string{conf.Kafka}, Topic: conf.KafkaTopic, StartOffset: kafka.FirstOffset, ReadBatchTimeout: 1 * time.Second, MaxAttempts: 1})
 	for {
-		n, err := batch.Read(b)
-		if err != nil {
+		if msg, err := reader.ReadMessage(context.Background()); err != nil {
+			readerLogger.Errorln("Error reading Kafka:", err)
 			break
+		} else {
+			readerLogger.Infof("topic=%s, partition=%d, offset=%d, key=%s, value=%s", msg.Topic, msg.Partition, msg.Offset, msg.Key, msg.Value)
+			time.Sleep(1 * time.Second)
 		}
-		fmt.Println(string(b[:n]))
-	}
-
-	if err := batch.Close(); err != nil {
-		log.Fatal("failed to close batch:", err)
-	}
-
-	if err := conn.Close(); err != nil {
-		log.Fatal("failed to close connection:", err)
 	}
 }
