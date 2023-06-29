@@ -1,6 +1,7 @@
 package thread
 
 import (
+	"dbload/kafka/message"
 	log "github.com/sirupsen/logrus"
 	"os"
 )
@@ -16,13 +17,13 @@ const (
 type Thread struct {
 	IsDone      bool
 	StatusChan  chan Status
-	MsgBuffer   []string
+	MsgBuffer   []message.Message
 	DumpPath    string
 	MaxBufSize  int
 	MaxDumpSize int
 }
 
-func (t *Thread) AppendBuffer(msg ...string) {
+func (t *Thread) AppendBuffer(msg ...message.Message) {
 	if len(t.MsgBuffer)+len(msg) >= t.MaxBufSize {
 		log.Traceln("dumping buffer because it exceeded max size")
 		t.DumpBuffer()
@@ -43,12 +44,12 @@ func (t *Thread) DumpBuffer() {
 		log.Errorln(err)
 	}
 	for _, msg := range t.MsgBuffer {
-		_, err = file.Write([]byte(msg))
+		_, err = file.Write([]byte(msg.GetValueForDump()))
 		if err != nil {
-			log.Errorf("can't dump data %v because %v", msg, err.Error())
+			log.Errorf("can't dump data %v because %v", msg.GetValueForDump(), err.Error())
 		}
 	}
-	t.MsgBuffer = []string{}
+	t.MsgBuffer = []message.Message{}
 }
 
 func (t *Thread) FinishThread() {
@@ -56,8 +57,8 @@ func (t *Thread) FinishThread() {
 	t.DumpBuffer()
 }
 
-func (t *Thread) GetBatchFromBuffer(batchSz int) []string {
-	var res []string
+func (t *Thread) GetBatchFromBuffer(batchSz int) []message.Message {
+	var res []message.Message
 	for i, msg := range t.MsgBuffer {
 		if i >= batchSz {
 			break
