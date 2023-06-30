@@ -1,10 +1,11 @@
 package thread
 
 import (
+	"sync"
+
 	"dbload/kafka/message"
 	"github.com/segmentio/kafka-go"
 	log "github.com/sirupsen/logrus"
-	"sync"
 )
 
 type ThreadsHolder struct {

@@ -1,10 +1,11 @@
 package dumper
 
 import (
-	"dbload/kafka/message"
 	"errors"
-	"github.com/gammazero/deque"
 	"os"
+
+	"dbload/kafka/message"
+	"github.com/gammazero/deque"
 )
 
 var DUMPTOOBIG = errors.New("dump file has exceeded it's max size! Stopping the program")

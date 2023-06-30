@@ -2,12 +2,13 @@ package main
 
 import (
 	"context"
+	"time"
+
 	"dbload/kafka/config"
 	"dbload/kafka/logger"
 	"dbload/kafka/producer/internal"
 	"github.com/segmentio/kafka-go"
 	log "github.com/sirupsen/logrus"
-	"time"
 )
 
 func measureTimeAndPrintData(start time.Time, conf config.Config, totalMessages int) {

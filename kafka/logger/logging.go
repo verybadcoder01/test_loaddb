@@ -1,10 +1,11 @@
 package logger
 
 import (
+	"time"
+
 	"dbload/kafka/config"
 	log "github.com/sirupsen/logrus"
 	"gopkg.in/natefinch/lumberjack.v2"
-	"time"
 )
 
 func SetupWriterLogging(conf config.Config, logger *log.Logger) {

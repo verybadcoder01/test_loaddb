@@ -1,10 +1,11 @@
 package buffer
 
 import (
+	"errors"
+
 	"dbload/kafka/message"
 	"dbload/kafka/producer/customErrors"
 	"dbload/kafka/producer/dumper"
-	"errors"
 	"github.com/gammazero/deque"
 	log "github.com/sirupsen/logrus"
 )

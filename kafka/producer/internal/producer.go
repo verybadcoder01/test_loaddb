@@ -3,19 +3,20 @@ package internal
 import (
 	"bufio"
 	"context"
+	"fmt"
+	"math/rand"
+	"os"
+	"sync"
+	"time"
+
 	"dbload/kafka/config"
 	"dbload/kafka/message"
 	"dbload/kafka/producer/buffer"
 	"dbload/kafka/producer/dumper"
 	"dbload/kafka/producer/thread"
-	"fmt"
 	"github.com/gammazero/deque"
 	"github.com/segmentio/kafka-go"
 	log "github.com/sirupsen/logrus"
-	"math/rand"
-	"os"
-	"sync"
-	"time"
 )
 
 func GetMessage() message.Message {
@@ -94,7 +95,10 @@ func keepListening(ctx context.Context, logger *log.Logger, holder *thread.Threa
 }
 
 func startWork(ctx context.Context, logger *log.Logger, conf config.Config, holder *thread.ThreadsHolder) int {
-	writer := &kafka.Writer{Addr: kafka.TCP(conf.Kafka), Topic: conf.KafkaTopic, Balancer: &kafka.Hash{}, WriteTimeout: 1 * time.Second, RequiredAcks: kafka.RequireAll, AllowAutoTopicCreation: true, BatchSize: conf.MsgBatchSize}
+	writer := &kafka.Writer{
+		Addr: kafka.TCP(conf.Kafka), Topic: conf.KafkaTopic, Balancer: &kafka.Hash{}, WriteTimeout: 1 * time.Second,
+		RequiredAcks: kafka.RequireAll, AllowAutoTopicCreation: true, BatchSize: conf.MsgBatchSize,
+	}
 	defer func(writer *kafka.Writer) {
 		err := writer.Close()
 		if err != nil {
@@ -118,10 +122,13 @@ func StartWriting(logger *log.Logger, conf config.Config) {
 		s := make(chan thread.Status, 100)
 		holder.Mu = append(holder.Mu, &sync.Mutex{})
 		holder.Threads = append(holder.Threads,
-			thread.Thread{IsDone: false,
-				MsgBuffer: &buffer.DequeBuffer{MaxLen: conf.MaxBufSize,
+			thread.Thread{
+				IsDone: false,
+				MsgBuffer: &buffer.DequeBuffer{
+					MaxLen: conf.MaxBufSize,
 					Dumper: dumper.NewSimpleDumper(conf.DumpDir+fmt.Sprintf("thread%v_dump.txt", i), int64(conf.MaxDumpSize)),
-					Buf:    deque.Deque[message.Message]{}},
+					Buf:    deque.Deque[message.Message]{},
+				},
 				StatusChan: s,
 				MaxBufSize: conf.MaxBufSize,
 			})
