@@ -49,6 +49,6 @@ func (d *SimpleDumper) Dump(buffer *deque.Deque[message.Message]) error {
 	return nil
 }
 
-func NewDumper(path string, maxSize int64) Dumper {
+func NewSimpleDumper(path string, maxSize int64) Dumper {
 	return &SimpleDumper{File: path, MaxSize: maxSize}
 }

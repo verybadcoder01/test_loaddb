@@ -5,6 +5,7 @@ import (
 	"context"
 	"dbload/kafka/config"
 	"dbload/kafka/message"
+	"dbload/kafka/producer/buffer"
 	"dbload/kafka/producer/dumper"
 	"dbload/kafka/producer/thread"
 	"fmt"
@@ -118,10 +119,12 @@ func StartWriting(logger *log.Logger, conf config.Config) {
 		holder.Mu = append(holder.Mu, &sync.Mutex{})
 		holder.Threads = append(holder.Threads,
 			thread.Thread{IsDone: false,
-				MsgBuffer:  deque.Deque[message.Message]{},
-				Dumper:     dumper.NewDumper(conf.DumpDir+fmt.Sprintf("thread%v_dump.txt", i), int64(conf.MaxDumpSize)),
+				MsgBuffer: &buffer.DequeBuffer{MaxLen: conf.MaxBufSize,
+					Dumper: dumper.NewSimpleDumper(conf.DumpDir+fmt.Sprintf("thread%v_dump.txt", i), int64(conf.MaxDumpSize)),
+					Buf:    deque.Deque[message.Message]{}},
 				StatusChan: s,
-				MaxBufSize: conf.MaxBufSize})
+				MaxBufSize: conf.MaxBufSize,
+			})
 	}
 	for {
 		ctx, StopThreads := context.WithCancel(context.Background())
