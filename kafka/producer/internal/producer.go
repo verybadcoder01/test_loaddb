@@ -5,8 +5,10 @@ import (
 	"context"
 	"dbload/kafka/config"
 	"dbload/kafka/message"
+	"dbload/kafka/producer/dumper"
 	"dbload/kafka/producer/thread"
 	"fmt"
+	"github.com/gammazero/deque"
 	"github.com/segmentio/kafka-go"
 	log "github.com/sirupsen/logrus"
 	"math/rand"
@@ -26,7 +28,7 @@ const (
 	ALLOK
 )
 
-func writeToKafka(logger *log.Logger, ctx context.Context, holder *thread.ThreadsHolder, writer *kafka.Writer, maxMsg int, batchSize int, threadId int) {
+func writeToKafka(ctx context.Context, logger *log.Logger, holder *thread.ThreadsHolder, writer *kafka.Writer, maxMsg int, batchSize int, threadId int) {
 	defer holder.FinishThread(logger, threadId)
 	for i := 0; i < maxMsg; {
 		select {
@@ -74,7 +76,7 @@ func writeToKafka(logger *log.Logger, ctx context.Context, holder *thread.Thread
 	close(holder.Threads[threadId].StatusChan)
 }
 
-func keepListening(logger *log.Logger, ctx context.Context, holder *thread.ThreadsHolder, batchSz int, threadId int) {
+func keepListening(ctx context.Context, logger *log.Logger, holder *thread.ThreadsHolder, batchSz int, threadId int) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -90,7 +92,7 @@ func keepListening(logger *log.Logger, ctx context.Context, holder *thread.Threa
 	}
 }
 
-func startWork(logger *log.Logger, ctx context.Context, conf config.Config, holder *thread.ThreadsHolder) int {
+func startWork(ctx context.Context, logger *log.Logger, conf config.Config, holder *thread.ThreadsHolder) int {
 	writer := &kafka.Writer{Addr: kafka.TCP(conf.Kafka), Topic: conf.KafkaTopic, Balancer: &kafka.Hash{}, WriteTimeout: 1 * time.Second, RequiredAcks: kafka.RequireAll, AllowAutoTopicCreation: true, BatchSize: conf.MsgBatchSize}
 	defer func(writer *kafka.Writer) {
 		err := writer.Close()
@@ -99,7 +101,7 @@ func startWork(logger *log.Logger, ctx context.Context, conf config.Config, hold
 		}
 	}(writer)
 	for i := 0; i < conf.MaxThreads; i++ {
-		go writeToKafka(logger, ctx, holder, writer, conf.MaxMessagesPerThread, conf.MsgBatchSize, i)
+		go writeToKafka(ctx, logger, holder, writer, conf.MaxMessagesPerThread, conf.MsgBatchSize, i)
 	}
 	arbitrResChan := make(chan int)
 	go StartArbitr(logger, conf, holder, arbitrResChan)
@@ -113,17 +115,22 @@ func StartWriting(logger *log.Logger, conf config.Config) {
 	var holder thread.ThreadsHolder
 	for i := 0; i < conf.MaxThreads; i++ {
 		s := make(chan thread.Status, 100)
-		holder.Mu = append(holder.Mu, &sync.RWMutex{})
-		holder.Threads = append(holder.Threads, thread.Thread{IsDone: false, MsgBuffer: []message.Message{}, DumpPath: conf.DumpDir + fmt.Sprintf("thread%v_dump.txt", i), StatusChan: s, MaxBufSize: conf.MaxBufSize, MaxDumpSize: conf.MaxDumpSize})
+		holder.Mu = append(holder.Mu, &sync.Mutex{})
+		holder.Threads = append(holder.Threads,
+			thread.Thread{IsDone: false,
+				MsgBuffer:  deque.Deque[message.Message]{},
+				Dumper:     dumper.NewDumper(conf.DumpDir+fmt.Sprintf("thread%v_dump.txt", i), int64(conf.MaxDumpSize)),
+				StatusChan: s,
+				MaxBufSize: conf.MaxBufSize})
 	}
 	for {
 		ctx, StopThreads := context.WithCancel(context.Background())
-		res := startWork(logger, ctx, conf, &holder)
+		res := startWork(ctx, logger, conf, &holder)
 		StopThreads()
 		if res == ALLDEAD {
 			ctxL, stopListening := context.WithCancel(context.Background())
 			for i := 0; i < conf.MaxThreads; i++ {
-				go keepListening(logger, ctxL, &holder, conf.MsgBatchSize, i)
+				go keepListening(ctxL, logger, &holder, conf.MsgBatchSize, i)
 			}
 			logger.Errorln("Messages are no more going through, only listening and dumping.")
 			reader := bufio.NewReader(os.Stdin)
@@ -145,10 +152,32 @@ func StartWriting(logger *log.Logger, conf config.Config) {
 	}
 }
 
+func attemptConnect(addr string, topic string, partition int) bool {
+	newConn, err := kafka.DialLeader(context.Background(), "tcp", addr, topic, partition)
+	if err != nil {
+		return false
+	}
+	_, err = newConn.ReadPartitions()
+	if err != nil {
+		return false
+	} else {
+		return true
+	}
+}
+
 func StartArbitr(logger *log.Logger, conf config.Config, holder *thread.ThreadsHolder, resChan chan int) {
 	deadCnt := 0
+	finished := 0
+	maxFunc := func(a int, b int) int {
+		if a > b {
+			return a
+		}
+		return b
+	}
 	for {
-		if holder.CountType(logger, thread.FINISHED) == len(holder.Threads) {
+		// since threads might not finish at the same time, we need to count total amount
+		finished = maxFunc(holder.CountType(logger, thread.FINISHED), finished)
+		if finished == len(holder.Threads) {
 			logger.Infoln("finish arbitr")
 			resChan <- ALLOK
 			return
@@ -169,21 +198,13 @@ func StartArbitr(logger *log.Logger, conf config.Config, holder *thread.ThreadsH
 		if attempts > conf.MaxDeadTimeOut {
 			break
 		}
-		newConn, err := kafka.DialLeader(context.Background(), "tcp", conf.Kafka, conf.KafkaTopic, conf.KafkaPartition)
-		if err != nil {
-			logger.Infof("fail!")
-			retrySuccessfull = false
-			continue
-		}
-		_, err = newConn.ReadPartitions()
-		if err != nil {
-			logger.Infof("fail!")
-			retrySuccessfull = false
-		} else {
+		retrySuccessfull = attemptConnect(conf.Kafka, conf.KafkaTopic, conf.KafkaPartition)
+		if retrySuccessfull {
 			logger.Infof("success!")
-			retrySuccessfull = true
 			ticker.Stop()
 			break
+		} else {
+			logger.Infof("fail!")
 		}
 	}
 	// these are errors, so they would be visible with higher logging levels
