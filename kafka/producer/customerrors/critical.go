@@ -4,6 +4,12 @@ import (
 	"fmt"
 )
 
+/* review:
+В чём смысл error как CritialError?
+Лучше пусть вызывающая сторона решает насколько ошибка критична.
+(вижу использование в DequeBufferюDump и, например, могу попытаться использовать другой Dumper)
+*/
+
 // CriticalError are errors that require os.Exit(1) (aka log.Fatal) or panic() to be called
 type CriticalError struct {
 	msg string
