@@ -34,6 +34,7 @@ func consume(ctx context.Context, wg *sync.WaitGroup, conf *config.Config, logge
 	if err != nil {
 		logger.Errorln(err)
 	}
+outer:
 	for {
 		select {
 		case <-ctx.Done():
@@ -41,7 +42,7 @@ func consume(ctx context.Context, wg *sync.WaitGroup, conf *config.Config, logge
 		default:
 			if msg, err := reader.ReadMessage(context.Background()); err != nil {
 				logger.Errorln("Error reading Kafka:", err)
-				break
+				break outer
 			} else {
 				logger.Infof("topic=%s, partition=%d, offset=%d, key=%s, value=%s", msg.Topic, msg.Partition, msg.Offset, msg.Key, msg.Value)
 			}

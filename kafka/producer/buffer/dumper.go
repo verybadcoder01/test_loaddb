@@ -5,7 +5,7 @@ import (
 	"os"
 )
 
-var DUMPTOOBIG = errors.New("dump file has exceeded it's max size! Stopping the program")
+var ErrDumpTooBig = errors.New("dump file has exceeded it's max size! Stopping the program")
 
 type Dumper interface {
 	Dump(buffer MessageBuffer) error
@@ -14,27 +14,27 @@ type Dumper interface {
 }
 
 type SimpleDumper struct {
-	File    string
-	MaxSize int64
+	file    string
+	maxSize int64
 }
 
 func (d *SimpleDumper) GetMaxSize() int64 {
-	return d.MaxSize
+	return d.maxSize
 }
 
 func (d *SimpleDumper) GetPath() string {
-	return d.File
+	return d.file
 }
 
 func (d *SimpleDumper) Dump(buffer MessageBuffer) error {
-	file, err := os.OpenFile(d.File, os.O_CREATE|os.O_APPEND|os.O_RDWR, 0666)
+	file, err := os.OpenFile(d.file, os.O_CREATE|os.O_APPEND|os.O_RDWR, 0666)
 	if err != nil {
 		return err
 	}
 	info, _ := file.Stat()
 	// info.Stat() is in bytes, so to convert to MB we divide twice
-	if info.Size()/1024/1024 > d.MaxSize {
-		return DUMPTOOBIG
+	if info.Size()/1024/1024 > d.maxSize {
+		return ErrDumpTooBig
 	}
 	defer file.Close()
 	for i := 0; i < buffer.Len(); i++ {
@@ -48,5 +48,5 @@ func (d *SimpleDumper) Dump(buffer MessageBuffer) error {
 }
 
 func NewSimpleDumper(path string, maxSize int64) Dumper {
-	return &SimpleDumper{File: path, MaxSize: maxSize}
+	return &SimpleDumper{file: path, maxSize: maxSize}
 }

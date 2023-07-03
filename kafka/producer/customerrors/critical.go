@@ -1,11 +1,10 @@
-package customErrors
+package customerrors
 
 import (
 	"fmt"
 )
 
-// Critical errors are errors that require os.Exit(1) (aka log.Fatal) or panic() to be called
-
+// CriticalError are errors that require os.Exit(1) (aka log.Fatal) or panic() to be called
 type CriticalError struct {
 	msg string
 }

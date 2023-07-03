@@ -16,25 +16,28 @@ const (
 )
 
 type Thread struct {
-	IsDone     bool
+	isDone     bool
 	StatusChan chan Status
-	MsgBuffer  buffer.MessageBuffer
-	MaxBufSize int
+	msgBuffer  buffer.MessageBuffer
+}
+
+func NewThread(statusChan chan Status, buffer buffer.MessageBuffer) Thread {
+	return Thread{isDone: false, StatusChan: statusChan, msgBuffer: buffer}
 }
 
 func (t *Thread) AppendBuffer(logger *log.Logger, msg ...message.Message) {
-	t.MsgBuffer.Append(logger, msg...)
+	t.msgBuffer.Append(logger, msg...)
 }
 
 func (t *Thread) DumpBuffer(logger *log.Logger) {
-	t.MsgBuffer.Dump(logger)
+	t.msgBuffer.Dump(logger)
 }
 
 func (t *Thread) FinishThread(logger *log.Logger) {
-	t.IsDone = true
+	t.isDone = true
 	t.DumpBuffer(logger)
 }
 
 func (t *Thread) ExtractBatchFromBuffer(batchSz int) []message.Message {
-	return t.MsgBuffer.ExtractBatch(batchSz)
+	return t.msgBuffer.ExtractBatch(batchSz)
 }

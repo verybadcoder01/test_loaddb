@@ -13,7 +13,7 @@ func SetupWriterLogging(conf config.Config, logger *log.Logger) {
 		Filename:   conf.WriterLogPath,
 		MaxSize:    32, // megabytes
 		MaxBackups: 2,
-		MaxAge:     28,   //days
+		MaxAge:     28,   // days
 		Compress:   true, // disabled by default
 	})
 	switch conf.LogLevel {

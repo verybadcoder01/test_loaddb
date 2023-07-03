@@ -13,13 +13,12 @@ import (
 	"dbload/kafka/message"
 	"dbload/kafka/producer/buffer"
 	"dbload/kafka/producer/thread"
-	"github.com/gammazero/deque"
 	"github.com/segmentio/kafka-go"
 	log "github.com/sirupsen/logrus"
 )
 
 func GetMessage() message.Message {
-	return &message.SimpleMessage{Value: fmt.Sprintf("message %v\n", rand.Int())}
+	return &message.SimpleMessage{Value: fmt.Sprintf("message %v\n", rand.Int())} //nolint //It just doesn't matter
 }
 
 // arbitr statuses
@@ -29,8 +28,8 @@ const (
 	ALLOK
 )
 
-func writeToKafka(ctx context.Context, logger *log.Logger, holder *thread.ThreadsHolder, writer *kafka.Writer, maxMsg int, batchSize int, threadId int) {
-	defer holder.FinishThread(logger, threadId)
+func writeToKafka(ctx context.Context, logger *log.Logger, holder *thread.ThreadsHolder, writer *kafka.Writer, maxMsg int, batchSize int, threadID int) {
+	defer holder.FinishThread(logger, threadID)
 	for i := 0; i < maxMsg; {
 		select {
 		case <-ctx.Done():
@@ -39,7 +38,7 @@ func writeToKafka(ctx context.Context, logger *log.Logger, holder *thread.Thread
 			var batch []kafka.Message
 			var data []message.Message // in case we need dumping
 			// let's check the buffer
-			prevBatch := holder.ReadBatchFromBuffer(logger, threadId, batchSize)
+			prevBatch := holder.ReadBatchFromBuffer(logger, threadID, batchSize)
 			for j := 0; j < batchSize; j++ {
 				// but we still have to fetch new messages
 				msg := GetMessage()
@@ -51,33 +50,33 @@ func writeToKafka(ctx context.Context, logger *log.Logger, holder *thread.Thread
 			if len(prevBatch) == batchSize {
 				err := writer.WriteMessages(ctx, prevBatch...)
 				if err != nil {
-					logger.Errorf("error occurred in thread %v", threadId)
+					logger.Errorf("error occurred in thread %v", threadID)
 					logger.Errorln(err)
 				}
 			}
 			err := writer.WriteMessages(ctx, batch...)
 			if err != nil {
 				// kafka is down
-				logger.Errorf("error occurred in thread %v", threadId)
+				logger.Errorf("error occurred in thread %v", threadID)
 				logger.Errorln(err)
-				holder.Threads[threadId].StatusChan <- thread.DEAD
-				logger.Debugf("goroutine %v write to channel", threadId)
+				holder.Threads[threadID].StatusChan <- thread.DEAD
+				logger.Debugf("goroutine %v write to channel", threadID)
 				// it doesn't matter if we tried writing messages from the buffer or the new ones, we should always save the new ones
-				holder.AppendBuffer(logger, threadId, data...)
+				holder.AppendBuffer(logger, threadID, data...)
 			} else {
-				holder.Threads[threadId].StatusChan <- thread.OK
+				holder.Threads[threadID].StatusChan <- thread.OK
 				if i%100 == 0 {
-					logger.Debugf("thread %v had sent %v messages", threadId, i)
+					logger.Debugf("thread %v had sent %v messages", threadID, i)
 				}
 			}
 		}
 	}
-	logger.Debugf("thread %v send finishing signal", threadId)
-	holder.Threads[threadId].StatusChan <- thread.FINISHED
-	close(holder.Threads[threadId].StatusChan)
+	logger.Debugf("thread %v send finishing signal", threadID)
+	holder.Threads[threadID].StatusChan <- thread.FINISHED
+	close(holder.Threads[threadID].StatusChan)
 }
 
-func keepListening(ctx context.Context, logger *log.Logger, holder *thread.ThreadsHolder, batchSz int, threadId int) {
+func keepListening(ctx context.Context, logger *log.Logger, holder *thread.ThreadsHolder, batchSz int, threadID int) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -88,7 +87,7 @@ func keepListening(ctx context.Context, logger *log.Logger, holder *thread.Threa
 				msg := GetMessage()
 				data = append(data, msg)
 			}
-			holder.AppendBuffer(logger, threadId, data...)
+			holder.AppendBuffer(logger, threadID, data...)
 		}
 	}
 }
@@ -116,27 +115,23 @@ func startWork(ctx context.Context, logger *log.Logger, conf config.Config, hold
 }
 
 func StartWriting(logger *log.Logger, conf config.Config) {
-	var holder thread.ThreadsHolder
+	var tmpMuList []*sync.Mutex
+	var tmpThreadsList []thread.Thread
 	for i := 0; i < conf.MaxThreads; i++ {
 		s := make(chan thread.Status, 100)
-		holder.Mu = append(holder.Mu, &sync.Mutex{})
-		holder.Threads = append(holder.Threads,
-			thread.Thread{
-				IsDone: false,
-				MsgBuffer: &buffer.DequeBuffer{
-					MaxLen: conf.MaxBufSize,
-					Dumper: buffer.NewSimpleDumper(conf.DumpDir+fmt.Sprintf("thread%v_dump.txt", i), int64(conf.MaxDumpSize)),
-					Buf:    deque.Deque[message.Message]{},
-				},
-				StatusChan: s,
-				MaxBufSize: conf.MaxBufSize,
-			})
+		tmpMuList = append(tmpMuList, &sync.Mutex{})
+		tmpThreadsList = append(tmpThreadsList,
+			thread.NewThread(s,
+				buffer.NewDequeBuffer(buffer.NewSimpleDumper(conf.DumpDir+fmt.Sprintf("thread%v_dump.txt", i), int64(conf.MaxDumpSize)),
+					conf.MaxBufSize,
+				)))
 	}
+	holder := thread.NewThreadsHolder(tmpMuList, tmpThreadsList)
 	for {
 		ctx, StopThreads := context.WithCancel(context.Background())
 		res := startWork(ctx, logger, conf, &holder)
 		StopThreads()
-		if res == ALLDEAD {
+		if res == ALLDEAD { //nolint // would require a lot of messing with break labels, not worth it
 			ctxL, stopListening := context.WithCancel(context.Background())
 			for i := 0; i < conf.MaxThreads; i++ {
 				go keepListening(ctxL, logger, &holder, conf.MsgBatchSize, i)
@@ -167,11 +162,7 @@ func attemptConnect(addr string, topic string, partition int) bool {
 		return false
 	}
 	_, err = newConn.ReadPartitions()
-	if err != nil {
-		return false
-	} else {
-		return true
-	}
+	return err == nil
 }
 
 func StartArbitr(logger *log.Logger, conf config.Config, holder *thread.ThreadsHolder, resChan chan<- int) {
@@ -186,7 +177,7 @@ func StartArbitr(logger *log.Logger, conf config.Config, holder *thread.ThreadsH
 	for {
 		// since threads might not finish at the same time, we need to count total amount
 		finished = maxFunc(holder.CountType(logger, thread.FINISHED), finished)
-		if finished == len(holder.Threads) {
+		if finished == holder.Len() {
 			logger.Infoln("finish arbitr")
 			resChan <- ALLOK
 			return
@@ -221,10 +212,8 @@ func StartArbitr(logger *log.Logger, conf config.Config, holder *thread.ThreadsH
 	if !retrySuccessfull {
 		logger.Errorln("retry failed, killing all threads")
 		resChan <- ALLDEAD
-		return
 	} else {
 		logger.Errorln("retry ok, restarting everything")
 		resChan <- ALLRESTART
-		return
 	}
 }
