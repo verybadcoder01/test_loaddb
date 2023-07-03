@@ -5,7 +5,6 @@ import (
 
 	"dbload/kafka/message"
 	"dbload/kafka/producer/customErrors"
-	"dbload/kafka/producer/dumper"
 	"github.com/gammazero/deque"
 	log "github.com/sirupsen/logrus"
 )
@@ -16,11 +15,12 @@ type MessageBuffer interface {
 	Dump(logger *log.Logger)
 	Len() int
 	GetMaxLen() int
+	At(i int) message.Message
 }
 
 type DequeBuffer struct {
 	Buf    deque.Deque[message.Message]
-	Dumper dumper.Dumper
+	Dumper Dumper
 	MaxLen int
 }
 
@@ -43,9 +43,13 @@ func (d *DequeBuffer) Append(logger *log.Logger, msg ...message.Message) {
 	}
 }
 
+func (d *DequeBuffer) At(i int) message.Message {
+	return d.Buf.At(i)
+}
+
 func (d *DequeBuffer) Dump(logger *log.Logger) {
-	err := d.Dumper.Dump(&d.Buf)
-	if errors.Is(err, dumper.DUMPTOOBIG) {
+	err := d.Dumper.Dump(d)
+	if errors.Is(err, DUMPTOOBIG) {
 		c := customErrors.NewCriticalError(err)
 		c.Wrap(map[string]interface{}{"File": d.Dumper.GetPath(), "MaxSize": d.Dumper.GetMaxSize()})
 		logger.Fatalln(c.Error())

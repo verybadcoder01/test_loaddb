@@ -12,7 +12,6 @@ import (
 	"dbload/kafka/config"
 	"dbload/kafka/message"
 	"dbload/kafka/producer/buffer"
-	"dbload/kafka/producer/dumper"
 	"dbload/kafka/producer/thread"
 	"github.com/gammazero/deque"
 	"github.com/segmentio/kafka-go"
@@ -126,7 +125,7 @@ func StartWriting(logger *log.Logger, conf config.Config) {
 				IsDone: false,
 				MsgBuffer: &buffer.DequeBuffer{
 					MaxLen: conf.MaxBufSize,
-					Dumper: dumper.NewSimpleDumper(conf.DumpDir+fmt.Sprintf("thread%v_dump.txt", i), int64(conf.MaxDumpSize)),
+					Dumper: buffer.NewSimpleDumper(conf.DumpDir+fmt.Sprintf("thread%v_dump.txt", i), int64(conf.MaxDumpSize)),
 					Buf:    deque.Deque[message.Message]{},
 				},
 				StatusChan: s,
@@ -175,7 +174,7 @@ func attemptConnect(addr string, topic string, partition int) bool {
 	}
 }
 
-func StartArbitr(logger *log.Logger, conf config.Config, holder *thread.ThreadsHolder, resChan chan int) {
+func StartArbitr(logger *log.Logger, conf config.Config, holder *thread.ThreadsHolder, resChan chan<- int) {
 	deadCnt := 0
 	finished := 0
 	maxFunc := func(a int, b int) int {

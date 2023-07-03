@@ -1,17 +1,14 @@
-package dumper
+package buffer
 
 import (
 	"errors"
 	"os"
-
-	"dbload/kafka/message"
-	"github.com/gammazero/deque"
 )
 
 var DUMPTOOBIG = errors.New("dump file has exceeded it's max size! Stopping the program")
 
 type Dumper interface {
-	Dump(buffer *deque.Deque[message.Message]) error
+	Dump(buffer MessageBuffer) error
 	GetPath() string
 	GetMaxSize() int64
 }
@@ -29,7 +26,7 @@ func (d *SimpleDumper) GetPath() string {
 	return d.File
 }
 
-func (d *SimpleDumper) Dump(buffer *deque.Deque[message.Message]) error {
+func (d *SimpleDumper) Dump(buffer MessageBuffer) error {
 	file, err := os.OpenFile(d.File, os.O_CREATE|os.O_APPEND|os.O_RDWR, 0666)
 	if err != nil {
 		return err
@@ -41,7 +38,7 @@ func (d *SimpleDumper) Dump(buffer *deque.Deque[message.Message]) error {
 	}
 	defer file.Close()
 	for i := 0; i < buffer.Len(); i++ {
-		msg := (*buffer).At(i)
+		msg := buffer.At(i)
 		_, err = file.Write([]byte(msg.GetValueForDump()))
 		if err != nil {
 			return err
