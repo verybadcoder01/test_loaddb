@@ -13,6 +13,10 @@ type ThreadsHolder struct {
 	Threads []Thread
 }
 
+/* review:
+Можно один раз передать в фабричный метод logger и больше не думать, при вызовах методов, есть ли нужный logger в скоупе
+*/
+
 func NewThreadsHolder(mu []*sync.Mutex, threads []Thread) ThreadsHolder {
 	return ThreadsHolder{mutexes: mu, Threads: threads}
 }

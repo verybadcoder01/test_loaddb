@@ -17,6 +17,9 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+/* review:
+По смыслу название похоже на GenerateMessage
+*/
 func GetMessage() message.Message {
 	return &message.SimpleMessage{Value: fmt.Sprintf("message %v\n", rand.Int())} //nolint //It just doesn't matter
 }
