@@ -7,6 +7,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+/* review:
+Каждая программа должна иметь свой конфиг, со своими настройками
+(Writer и Reader могут иметь массу специфичных настроек и скорее всего будут,
+потому что чаще используется ConsumerGroup чем просто Consumer)
+*/
+
 type Config struct {
 	Kafka                string `yaml:"kafka"`
 	KafkaTopic           string `yaml:"kafkaTopic"`

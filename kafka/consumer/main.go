@@ -7,6 +7,10 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+/* review:
+отсутвует обраюока ошибок
+*/
+
 func main() {
 	conf := config.ParseConfig()
 	readerLogger := log.New()
