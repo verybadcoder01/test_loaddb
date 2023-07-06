@@ -11,7 +11,9 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-/* review:
+/*
+	review:
+
 Необходимо распечатать реальные измерения, тк возможны ощибки в коде, локи,... влияющие на скорость
 
 Возможные метрики: min/avg/max rate, 50/90/100 quantile
@@ -23,11 +25,13 @@ func measureTimeAndPrintData(start time.Time, conf config.Config, totalMessages 
 	log.Infof("System proccessed about %f messages per minute", float64(totalMessages)/elapsed.Minutes())
 }
 
-/* review:
+/*
+	review:
+
 Хорошо бы в main создать все требуемые объекты и уже их передавать в друг другу и вспомогательным функциям
 тогда:
-    1) процесс смены одной библиотеки на другую будет проще + возможно использование нескольких библиотек в зависимости от настроек
-    2) становится возможным unit-тестирование, так как возможно будет за'mock'ать нужное поведение
+ 1. процесс смены одной библиотеки на другую будет проще + возможно использование нескольких библиотек в зависимости от настроек
+ 2. становится возможным unit-тестирование, так как возможно будет за'mock'ать нужное поведение
 
 нет никакого graceful shutdown механизма
 что будет, если прервать выполнение программы?
@@ -35,7 +39,9 @@ func measureTimeAndPrintData(start time.Time, conf config.Config, totalMessages 
 func main() {
 	conf := config.ParseConfig()
 	writerLogger := log.New()
-	logger.SetupWriterLogging(conf, writerLogger)
+	logger.SetupLogging(logger.NewLoggerConfig(conf.LogLevel, conf.WriterLogPath, &log.TextFormatter{
+		PadLevelText: true, DisableColors: true, TimestampFormat: time.DateTime,
+	}), writerLogger)
 	_, err := kafka.DialLeader(context.Background(), "tcp", conf.Kafka, conf.KafkaTopic, conf.KafkaPartition)
 	if err != nil {
 		log.Fatal("failed to dial leader:", err)

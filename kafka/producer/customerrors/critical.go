@@ -4,26 +4,20 @@ import (
 	"fmt"
 )
 
-/* review:
-В чём смысл error как CritialError?
-Лучше пусть вызывающая сторона решает насколько ошибка критична.
-(вижу использование в DequeBufferюDump и, например, могу попытаться использовать другой Dumper)
-*/
-
-// CriticalError are errors that require os.Exit(1) (aka log.Fatal) or panic() to be called
-type CriticalError struct {
+// CustomError are errors that can be wrapped with additional info
+type CustomError struct {
 	msg string
 }
 
-func (e *CriticalError) Error() string {
+func (e *CustomError) Error() string {
 	return e.msg
 }
 
-func NewCriticalError(err error) CriticalError {
-	return CriticalError{msg: err.Error()}
+func NewCriticalError(err error) CustomError {
+	return CustomError{msg: err.Error()}
 }
 
-func (e *CriticalError) Wrap(params map[string]interface{}) {
+func (e *CustomError) Wrap(params map[string]interface{}) {
 	for k, v := range params {
 		e.msg += fmt.Sprintf(" %s=%v ", k, v)
 	}

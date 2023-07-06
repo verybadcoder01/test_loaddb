@@ -1,80 +1,49 @@
 package logger
 
 import (
-	"time"
-
-	"dbload/kafka/config"
 	log "github.com/sirupsen/logrus"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
-/* review:
-Здесь скорее должна быть одна функция, с передачей в неё специфиных настроек, а не конфига приложения
-(фунция логгирования не должна получать больше информации, чем требуется для создания)
-*/
+type LoggerConfig struct {
+	FileName  string
+	LogLevel  log.Level
+	Formatter log.Formatter
+}
 
-func SetupWriterLogging(conf config.Config, logger *log.Logger) {
-	logger.SetOutput(&lumberjack.Logger{
-		Filename:   conf.WriterLogPath,
-		MaxSize:    32, // megabytes
-		MaxBackups: 2,
-		MaxAge:     28,   // days
-		Compress:   true, // disabled by default
-	})
-	switch conf.LogLevel {
+func NewLoggerConfig(level string, file string, formatter log.Formatter) LoggerConfig {
+	var res LoggerConfig
+	switch level {
 	case "trace":
-		logger.SetLevel(log.TraceLevel)
+		res.LogLevel = log.TraceLevel
 	case "debug":
-		logger.SetLevel(log.DebugLevel)
+		res.LogLevel = log.DebugLevel
 	case "info":
-		logger.SetLevel(log.InfoLevel)
+		res.LogLevel = log.InfoLevel
 	case "warn":
-		logger.SetLevel(log.WarnLevel)
+		res.LogLevel = log.WarnLevel
 	case "error":
-		logger.SetLevel(log.ErrorLevel)
+		res.LogLevel = log.ErrorLevel
 	case "fatal":
-		logger.SetLevel(log.FatalLevel)
+		res.LogLevel = log.FatalLevel
 	case "panic":
-		logger.SetLevel(log.PanicLevel)
+		res.LogLevel = log.PanicLevel
 	default:
 		panic("unknown logging level. Check the config!")
 	}
-	logger.SetFormatter(&log.TextFormatter{
-		PadLevelText:    true,
-		DisableColors:   true,
-		TimestampFormat: time.DateTime,
-	})
+	res.FileName = file
+	res.Formatter = formatter
+	return res
 }
 
-func SetupReaderLogging(conf config.Config, logger *log.Logger) {
+func SetupLogging(conf LoggerConfig, logger *log.Logger) {
 	logger.SetOutput(&lumberjack.Logger{
-		Filename:   conf.ReaderLogPath,
+		Filename:   conf.FileName,
 		MaxSize:    32,
 		MaxBackups: 2,
 		MaxAge:     28,
 		Compress:   true,
 	})
-	switch conf.LogLevel {
-	case "trace":
-		logger.SetLevel(log.TraceLevel)
-	case "debug":
-		logger.SetLevel(log.DebugLevel)
-	case "info":
-		logger.SetLevel(log.InfoLevel)
-	case "warn":
-		logger.SetLevel(log.WarnLevel)
-	case "error":
-		logger.SetLevel(log.ErrorLevel)
-	case "fatal":
-		logger.SetLevel(log.FatalLevel)
-	case "panic":
-		logger.SetLevel(log.PanicLevel)
-	default:
-		panic("unknown logging level. Check the config!")
-	}
-	logger.SetFormatter(&log.TextFormatter{
-		PadLevelText:    true,
-		DisableColors:   true,
-		TimestampFormat: time.DateTime,
-	})
+	logger.SetLevel(conf.LogLevel)
+	logger.SetFormatter(conf.Formatter)
 }

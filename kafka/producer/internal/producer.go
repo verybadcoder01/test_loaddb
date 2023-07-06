@@ -17,7 +17,9 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-/* review:
+/*
+	review:
+
 По смыслу название похоже на GenerateMessage
 */
 func GetMessage() message.Message {
@@ -32,7 +34,7 @@ const (
 )
 
 func writeToKafka(ctx context.Context, logger *log.Logger, holder *thread.ThreadsHolder, writer *kafka.Writer, maxMsg int, batchSize int, threadID int) {
-	defer holder.FinishThread(logger, threadID)
+	defer holder.FinishThread(threadID)
 	for i := 0; i < maxMsg; {
 		select {
 		case <-ctx.Done():
@@ -41,7 +43,7 @@ func writeToKafka(ctx context.Context, logger *log.Logger, holder *thread.Thread
 			var batch []kafka.Message
 			var data []message.Message // in case we need dumping
 			// let's check the buffer
-			prevBatch := holder.ReadBatchFromBuffer(logger, threadID, batchSize)
+			prevBatch := holder.ReadBatchFromBuffer(threadID, batchSize)
 			for j := 0; j < batchSize; j++ {
 				// but we still have to fetch new messages
 				msg := GetMessage()
@@ -65,7 +67,7 @@ func writeToKafka(ctx context.Context, logger *log.Logger, holder *thread.Thread
 				holder.Threads[threadID].StatusChan <- thread.DEAD
 				logger.Debugf("goroutine %v write to channel", threadID)
 				// it doesn't matter if we tried writing messages from the buffer or the new ones, we should always save the new ones
-				holder.AppendBuffer(logger, threadID, data...)
+				holder.AppendBuffer(threadID, data...)
 			} else {
 				holder.Threads[threadID].StatusChan <- thread.OK
 				if i%100 == 0 {
@@ -90,7 +92,7 @@ func keepListening(ctx context.Context, logger *log.Logger, holder *thread.Threa
 				msg := GetMessage()
 				data = append(data, msg)
 			}
-			holder.AppendBuffer(logger, threadID, data...)
+			holder.AppendBuffer(threadID, data...)
 		}
 	}
 }
@@ -129,7 +131,7 @@ func StartWriting(logger *log.Logger, conf config.Config) {
 					conf.MaxBufSize,
 				)))
 	}
-	holder := thread.NewThreadsHolder(tmpMuList, tmpThreadsList)
+	holder := thread.NewThreadsHolder(tmpMuList, tmpThreadsList, logger)
 	for {
 		ctx, StopThreads := context.WithCancel(context.Background())
 		res := startWork(ctx, logger, conf, &holder)
@@ -179,13 +181,13 @@ func StartArbitr(logger *log.Logger, conf config.Config, holder *thread.ThreadsH
 	}
 	for {
 		// since threads might not finish at the same time, we need to count total amount
-		finished = maxFunc(holder.CountType(logger, thread.FINISHED), finished)
+		finished = maxFunc(holder.CountType(thread.FINISHED), finished)
 		if finished == holder.Len() {
 			logger.Infoln("finish arbitr")
 			resChan <- ALLOK
 			return
 		}
-		deadCnt = holder.CountType(logger, thread.DEAD)
+		deadCnt = holder.CountType(thread.DEAD)
 		if deadCnt > conf.MaxDeadThreads {
 			logger.Errorf("there are %v dead threads but maximum of %v is allowed", deadCnt, conf.MaxDeadThreads)
 			break

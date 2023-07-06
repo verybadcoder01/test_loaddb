@@ -11,56 +11,53 @@ import (
 type ThreadsHolder struct {
 	mutexes []*sync.Mutex
 	Threads []Thread
+	logger  *log.Logger
 }
 
-/* review:
-Можно один раз передать в фабричный метод logger и больше не думать, при вызовах методов, есть ли нужный logger в скоупе
-*/
-
-func NewThreadsHolder(mu []*sync.Mutex, threads []Thread) ThreadsHolder {
-	return ThreadsHolder{mutexes: mu, Threads: threads}
+func NewThreadsHolder(mu []*sync.Mutex, threads []Thread, logger *log.Logger) ThreadsHolder {
+	return ThreadsHolder{mutexes: mu, Threads: threads, logger: logger}
 }
 
 func (t *ThreadsHolder) Len() int {
 	return len(t.Threads)
 }
 
-func (t *ThreadsHolder) CountType(logger *log.Logger, sig Status) int {
+func (t *ThreadsHolder) CountType(sig Status) int {
 	cnt := 0
 	for i := range t.Threads {
-		logger.Tracef("mutex %v locked for reading by arbitr\n", i)
+		t.logger.Tracef("mutex %v locked for reading by arbitr\n", i)
 		s := <-t.Threads[i].StatusChan
 		if s == sig {
 			cnt++
 		}
-		logger.Tracef("mutex %v unlocked by arbitr\n", i)
+		t.logger.Tracef("mutex %v unlocked by arbitr\n", i)
 	}
 	return cnt
 }
 
-func (t *ThreadsHolder) FinishThread(logger *log.Logger, id int) {
-	logger.Infof("finishing thread %v", id)
+func (t *ThreadsHolder) FinishThread(id int) {
+	t.logger.Infof("finishing thread %v", id)
 	t.mutexes[id].Lock()
 	defer t.mutexes[id].Unlock()
-	t.Threads[id].FinishThread(logger)
+	t.Threads[id].FinishThread(t.logger)
 }
 
-func (t *ThreadsHolder) AppendBuffer(logger *log.Logger, id int, msg ...message.Message) {
+func (t *ThreadsHolder) AppendBuffer(id int, msg ...message.Message) {
 	t.mutexes[id].Lock()
-	logger.Tracef("mutex %v locked for writing by goroutine %v\n", id, id)
+	t.logger.Tracef("mutex %v locked for writing by goroutine %v\n", id, id)
 	defer func() {
 		t.mutexes[id].Unlock()
-		logger.Tracef("mutex %v unlocked by goroutine %v\n", id, id)
+		t.logger.Tracef("mutex %v unlocked by goroutine %v\n", id, id)
 	}()
-	t.Threads[id].AppendBuffer(logger, msg...)
+	t.Threads[id].AppendBuffer(t.logger, msg...)
 }
 
-func (t *ThreadsHolder) ReadBatchFromBuffer(logger *log.Logger, id int, batchSz int) []kafka.Message {
+func (t *ThreadsHolder) ReadBatchFromBuffer(id int, batchSz int) []kafka.Message {
 	t.mutexes[id].Lock()
-	logger.Tracef("mutex %v locked for writing by goroutine %v", id, id)
+	t.logger.Tracef("mutex %v locked for writing by goroutine %v", id, id)
 	msgs := t.Threads[id].ExtractBatchFromBuffer(batchSz)
 	t.mutexes[id].Unlock()
-	logger.Tracef("mutex %v unlocked by goroutine %v", id, id)
+	t.logger.Tracef("mutex %v unlocked by goroutine %v", id, id)
 	var res []kafka.Message
 	for _, msg := range msgs {
 		res = append(res, msg.ToKafkaMessage())

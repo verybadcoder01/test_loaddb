@@ -25,6 +25,8 @@ type Config struct {
 	MaxBufSize           int    `yaml:"maxBufSize"`
 	MaxDeadThreads       int    `yaml:"maxDeadThreads"`
 	MaxDeadTimeOut       int    `yaml:"maxDeadTimeOut"`
+	MinReadBytes         int    `yaml:"minReadBytes"`
+	MaxReadBytes         int    `yaml:"maxReadBytes"`
 	WriterLogPath        string `yaml:"writerLogPath"`
 	ReaderLogPath        string `yaml:"readerLogPath"`
 	LogLevel             string `yaml:"logLevel"` // possible options are: trace, debug, info, warn, error, fatal, panic

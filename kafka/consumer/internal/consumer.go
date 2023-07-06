@@ -28,18 +28,15 @@ func HandleSignals(reader *kafka.Reader) error {
 	return err
 }
 
-/* review:
-Что будет если я добавлю партиций? -)
-Магические числа - моветон и должны уехать в конфиг
+/*
+	review:
 
-Также не вижу необходимости функции знать, что её могут захотеть вызвать с кем-то
-WaitGroup лучше перенести в место вызова
+Что будет если я добавлю партиций? -)
 */
-func consume(ctx context.Context, wg *sync.WaitGroup, conf *config.Config, logger *log.Logger) {
-	defer wg.Done()
+func consume(ctx context.Context, conf *config.Config, logger *log.Logger) {
 	reader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers: []string{conf.Kafka}, Topic: conf.KafkaTopic, StartOffset: kafka.FirstOffset,
-		Partition: conf.KafkaPartition, MaxBytes: 10e6, MinBytes: 10e3,
+		Partition: conf.KafkaPartition, MaxBytes: conf.MaxReadBytes, MinBytes: conf.MinReadBytes,
 	})
 	err := HandleSignals(reader)
 	if err != nil {
@@ -51,8 +48,7 @@ outer:
 		case <-ctx.Done():
 			return
 		default:
-			// review: почему не используется контект ctx?
-			if msg, err := reader.ReadMessage(context.Background()); err != nil {
+			if msg, err := reader.ReadMessage(ctx); err != nil {
 				logger.Errorln("Error reading Kafka:", err)
 				break outer
 			} else {
@@ -68,9 +64,7 @@ func StartConsuming(conf *config.Config, logger *log.Logger) {
 	// context leaves place for further management
 	ctx, cancel := context.WithCancel(context.Background())
 	for i := 0; i < conf.MaxThreads; i++ {
-		// review: лучше вызвать в замыкании eg.: go func() { wg.Done(); consume(...) }()
-		// тогда магия параллельного вызова не покинет пределы функции и не будет размазана
-		go consume(ctx, &wg, conf, logger)
+		go func() { consume(ctx, conf, logger); wg.Done() }()
 	}
 	wg.Wait()
 	cancel()
