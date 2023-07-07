@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"time"
 
 	"dbload/kafka/config"
@@ -11,32 +12,30 @@ import (
 	"github.com/xlab/closer"
 )
 
-/* review:
-отсутвует обраюока ошибок
-*/
-
-func cleanup() {
-	// TODO
-	log.Println("finishing up")
-}
-
 func main() {
 	conf := config.ParseConfig()
 	readerLogger := log.New()
-	logger.SetupLogging(logger.NewLoggerConfig(conf.LogLevel, conf.ReaderLogPath, &log.TextFormatter{
+	logger.SetupLogging(logger.NewLoggerConfig(conf.Logging.LogLevel, conf.Logging.ConsumerLogPath, &log.TextFormatter{
 		PadLevelText: true, DisableColors: true, TimestampFormat: time.DateTime,
 	}), readerLogger)
 	reader := kafka.NewReader(kafka.ReaderConfig{
-		Brokers: []string{conf.Kafka}, Topic: conf.KafkaTopic, StartOffset: kafka.FirstOffset,
-		GroupID: conf.KafkaConsumerGroup,
+		Brokers: conf.Kafka.Brokers, Topic: conf.Kafka.Topic, StartOffset: kafka.FirstOffset,
+		GroupID: conf.Kafka.ConsumerGroup,
 		GroupBalancers: []kafka.GroupBalancer{
 			&kafka.RangeGroupBalancer{}, &kafka.RoundRobinGroupBalancer{}, &kafka.RackAffinityGroupBalancer{},
 		},
-		MaxBytes: conf.MaxReadBytes, MinBytes: conf.MinReadBytes,
-		CommitInterval: time.Duration(conf.ReadCommitInterval) * time.Second,
+		MaxBytes: conf.Consumer.MaxReadBytes, MinBytes: conf.Consumer.MinReadBytes,
+		CommitInterval: time.Duration(conf.Consumer.ReadCommitIntervalSec) * time.Second,
 	})
-	closer.Bind(cleanup)
-	internal.StartConsuming(conf.MaxThreads, readerLogger, reader)
+	ctx, cancel := context.WithCancel(context.Background())
+	closer.Bind(func() {
+		if err := reader.Close(); err != nil {
+			readerLogger.Errorln(err)
+		}
+		cancel()
+		readerLogger.Infoln("finishing up")
+	})
+	internal.StartConsuming(ctx, conf.Performance.MaxThreads, readerLogger, reader)
 	closer.Close()
 	closer.Hold()
 }

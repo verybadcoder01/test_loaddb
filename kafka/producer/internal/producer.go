@@ -97,8 +97,9 @@ func keepListening(ctx context.Context, holder *thread.ThreadsHolder, batchSz in
 
 func startWork(ctx context.Context, logger *log.Logger, conf config.Config, holder *thread.ThreadsHolder) int {
 	writer := &kafka.Writer{
-		Addr: kafka.TCP(conf.Kafka), Topic: conf.KafkaTopic, Balancer: &kafka.Hash{}, WriteTimeout: 1 * time.Second,
-		RequiredAcks: kafka.RequireAll, AllowAutoTopicCreation: true, BatchSize: conf.MsgBatchSize,
+		Addr: kafka.TCP(conf.Kafka.Brokers[0]), Topic: conf.Kafka.Topic, Balancer: &kafka.Hash{},
+		WriteTimeout: time.Duration(conf.Producer.WriteTimeOutSec) * time.Second,
+		RequiredAcks: kafka.RequireAll, AllowAutoTopicCreation: true, BatchSize: conf.Producer.MsgBatchSize,
 	}
 	defer func(writer *kafka.Writer) {
 		err := writer.Close()
@@ -106,8 +107,8 @@ func startWork(ctx context.Context, logger *log.Logger, conf config.Config, hold
 			logger.Errorln(err)
 		}
 	}(writer)
-	for i := 0; i < conf.MaxThreads; i++ {
-		go writeToKafka(ctx, logger, holder, writer, conf.MaxMessagesPerThread, conf.MsgBatchSize, i)
+	for i := 0; i < conf.Performance.MaxThreads; i++ {
+		go writeToKafka(ctx, logger, holder, writer, conf.Performance.MaxMessagesPerThread, conf.Producer.MsgBatchSize, i)
 	}
 	arbitrResChan := make(chan int)
 	go StartArbitr(logger, conf, holder, arbitrResChan)
@@ -117,15 +118,15 @@ func startWork(ctx context.Context, logger *log.Logger, conf config.Config, hold
 	return res
 }
 
-func StartWriting(logger *log.Logger, conf config.Config, holder *thread.ThreadsHolder) {
+func StartWriting(ctx context.Context, logger *log.Logger, conf config.Config, holder *thread.ThreadsHolder) {
 	for {
-		ctx, StopThreads := context.WithCancel(context.Background())
+		ctx, StopThreads := context.WithCancel(ctx)
 		res := startWork(ctx, logger, conf, holder)
 		StopThreads()
 		if res == ALLDEAD { //nolint // would require a lot of messing with break labels, not worth it
 			ctxL, stopListening := context.WithCancel(context.Background())
-			for i := 0; i < conf.MaxThreads; i++ {
-				go keepListening(ctxL, holder, conf.MsgBatchSize, i)
+			for i := 0; i < conf.Performance.MaxThreads; i++ {
+				go keepListening(ctxL, holder, conf.Producer.MsgBatchSize, i)
 			}
 			logger.Errorln("Messages are no more going through, only listening and dumping.")
 			reader := bufio.NewReader(os.Stdin)
@@ -174,8 +175,8 @@ func StartArbitr(logger *log.Logger, conf config.Config, holder *thread.ThreadsH
 			return
 		}
 		deadCnt = holder.CountType(thread.DEAD)
-		if deadCnt > conf.MaxDeadThreads {
-			logger.Errorf("there are %v dead threads but maximum of %v is allowed", deadCnt, conf.MaxDeadThreads)
+		if deadCnt > conf.Performance.MaxDeadThreads {
+			logger.Errorf("there are %v dead threads but maximum of %v is allowed", deadCnt, conf.Performance.MaxDeadThreads)
 			break
 		}
 	}
@@ -186,10 +187,10 @@ func StartArbitr(logger *log.Logger, conf config.Config, holder *thread.ThreadsH
 	for range ticker.C {
 		logger.Infof("retry attempt %v", attempts)
 		attempts++
-		if attempts > conf.MaxDeadTimeOut {
+		if attempts > conf.Performance.MaxDeadTimeOut {
 			break
 		}
-		retrySuccessfull = attemptConnect(conf.Kafka, conf.KafkaTopic, 0)
+		retrySuccessfull = attemptConnect(conf.Kafka.Brokers[0], conf.Kafka.Topic, 0)
 		if retrySuccessfull {
 			logger.Infof("success!")
 			ticker.Stop()

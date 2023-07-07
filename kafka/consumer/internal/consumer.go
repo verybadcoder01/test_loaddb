@@ -25,16 +25,11 @@ outer:
 	}
 }
 
-func StartConsuming(maxThreads int, logger *log.Logger, reader *kafka.Reader) {
-	defer func() {
-		if err := reader.Close(); err != nil {
-			logger.Errorln(err)
-		}
-	}()
+func StartConsuming(ctx context.Context, maxThreads int, logger *log.Logger, reader *kafka.Reader) {
 	wg := sync.WaitGroup{}
 	wg.Add(maxThreads)
 	// context leaves place for further management
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ctx)
 	for i := 0; i < maxThreads; i++ {
 		go func() { consume(ctx, logger, reader); wg.Done() }()
 	}

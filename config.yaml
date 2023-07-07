@@ -1,17 +1,24 @@
-kafka: "localhost:9092"
-kafkaTopic: "test-project"
-kafkaConsumerGroup: "test-consumer-group"
-readCommitInterval: 1
-maxThreads: 4
-maxMessagesPerThread: 100000
-msgBatchSize: 10
-dumpDir: "./dumps/"
-maxDumpSize: 16
-maxBufSize: 1000
-maxDeadThreads: 2
-maxDeadTimeOut: 30
-minReadBytes: 1000
-maxReadBytes: 10000000
-writerLogPath: "./writer_log.txt"
-readerLogPath: "./reader_log.txt"
-logLevel: "debug"
+kafka:
+  brokers: ["localhost:9092"]
+  topic: "test-project"
+  consumerGroup: "test-consumer-group"
+producer:
+  msgBatchSize: 10
+  writeTimeOutSec: 1
+performance:
+  maxThreads: 4
+  maxMessagesPerThread: 100000
+  maxDeadThreads: 2
+  maxDeadTimeOut: 30
+consumer:
+  readCommitIntervalSec: 1
+  minReadBytes: 1000
+  maxReadBytes: 10000000
+dumps:
+  dumpDir: "./dumps/"
+  maxDumpSize: 16
+  maxBufSize: 10000
+logging:
+  producerLogPath: "./writer_log.txt"
+  consumerLogPath: "./reader_log.txt"
+  logLevel: "info"

@@ -7,30 +7,37 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-/* review:
-Каждая программа должна иметь свой конфиг, со своими настройками
-(Writer и Reader могут иметь массу специфичных настроек и скорее всего будут,
-потому что чаще используется ConsumerGroup чем просто Consumer)
-*/
-
 type Config struct {
-	Kafka                string `yaml:"kafka"`
-	KafkaTopic           string `yaml:"kafkaTopic"`
-	KafkaConsumerGroup   string `yaml:"kafkaConsumerGroup"`
-	ReadCommitInterval   int    `yaml:"readCommitInterval"`
-	MaxThreads           int    `yaml:"maxThreads"`
-	MaxMessagesPerThread int    `yaml:"maxMessagesPerThread"`
-	MsgBatchSize         int    `yaml:"msgBatchSize"`
-	DumpDir              string `yaml:"dumpDir"`
-	MaxDumpSize          int    `yaml:"maxDumpSize"` // in megabytes
-	MaxBufSize           int    `yaml:"maxBufSize"`
-	MaxDeadThreads       int    `yaml:"maxDeadThreads"`
-	MaxDeadTimeOut       int    `yaml:"maxDeadTimeOut"`
-	MinReadBytes         int    `yaml:"minReadBytes"`
-	MaxReadBytes         int    `yaml:"maxReadBytes"`
-	WriterLogPath        string `yaml:"writerLogPath"`
-	ReaderLogPath        string `yaml:"readerLogPath"`
-	LogLevel             string `yaml:"logLevel"` // possible options are: trace, debug, info, warn, error, fatal, panic
+	Kafka struct {
+		Brokers       []string `yaml:"brokers"`
+		Topic         string   `yaml:"topic"`
+		ConsumerGroup string   `yaml:"consumerGroup"`
+	} `yaml:"kafka"`
+	Producer struct {
+		MsgBatchSize    int `yaml:"msgBatchSize"`
+		WriteTimeOutSec int `yaml:"writeTimeOutSec"`
+	} `yaml:"producer"`
+	Performance struct {
+		MaxThreads           int `yaml:"maxThreads"`
+		MaxMessagesPerThread int `yaml:"maxMessagesPerThread"`
+		MaxDeadThreads       int `yaml:"maxDeadThreads"`
+		MaxDeadTimeOut       int `yaml:"maxDeadTimeOut"`
+	} `yaml:"performance"`
+	Consumer struct {
+		ReadCommitIntervalSec int `yaml:"readCommitIntervalSec"`
+		MinReadBytes          int `yaml:"minReadBytes"`
+		MaxReadBytes          int `yaml:"maxReadBytes"`
+	} `yaml:"consumer"`
+	Dumps struct {
+		DumpDir     string `yaml:"dumpDir"`
+		MaxDumpSize int    `yaml:"maxDumpSize"` // in megabytes
+		MaxBufSize  int    `yaml:"maxBufSize"`
+	} `yaml:"dumps"`
+	Logging struct {
+		ProducerLogPath string `yaml:"producerLogPath"`
+		ConsumerLogPath string `yaml:"consumerLogPath"`
+		LogLevel        string `yaml:"logLevel"` // possible options are: trace, debug, info, warn, error, fatal, panic
+	} `yaml:"logging"`
 }
 
 func ParseConfig() Config {
