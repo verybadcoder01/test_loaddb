@@ -1,6 +1,7 @@
 kafka: "localhost:9092"
 kafkaTopic: "test-project"
-kafkaPartition: 0
+kafkaConsumerGroup: "test-consumer-group"
+readCommitInterval: 1
 maxThreads: 4
 maxMessagesPerThread: 100000
 msgBatchSize: 10
@@ -9,7 +10,7 @@ maxDumpSize: 16
 maxBufSize: 1000
 maxDeadThreads: 2
 maxDeadTimeOut: 30
-minReadBytes: 10000
+minReadBytes: 1000
 maxReadBytes: 10000000
 writerLogPath: "./writer_log.txt"
 readerLogPath: "./reader_log.txt"

@@ -6,12 +6,10 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
-	"sync"
 	"time"
 
 	"dbload/kafka/config"
 	"dbload/kafka/message"
-	"dbload/kafka/producer/buffer"
 	"dbload/kafka/producer/thread"
 	"github.com/segmentio/kafka-go"
 	log "github.com/sirupsen/logrus"
@@ -81,7 +79,7 @@ func writeToKafka(ctx context.Context, logger *log.Logger, holder *thread.Thread
 	close(holder.Threads[threadID].StatusChan)
 }
 
-func keepListening(ctx context.Context, logger *log.Logger, holder *thread.ThreadsHolder, batchSz int, threadID int) {
+func keepListening(ctx context.Context, holder *thread.ThreadsHolder, batchSz int, threadID int) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -119,27 +117,15 @@ func startWork(ctx context.Context, logger *log.Logger, conf config.Config, hold
 	return res
 }
 
-func StartWriting(logger *log.Logger, conf config.Config) {
-	var tmpMuList []*sync.Mutex
-	var tmpThreadsList []thread.Thread
-	for i := 0; i < conf.MaxThreads; i++ {
-		s := make(chan thread.Status, 100)
-		tmpMuList = append(tmpMuList, &sync.Mutex{})
-		tmpThreadsList = append(tmpThreadsList,
-			thread.NewThread(s,
-				buffer.NewDequeBuffer(buffer.NewSimpleDumper(conf.DumpDir+fmt.Sprintf("thread%v_dump.txt", i), int64(conf.MaxDumpSize)),
-					conf.MaxBufSize,
-				)))
-	}
-	holder := thread.NewThreadsHolder(tmpMuList, tmpThreadsList, logger)
+func StartWriting(logger *log.Logger, conf config.Config, holder *thread.ThreadsHolder) {
 	for {
 		ctx, StopThreads := context.WithCancel(context.Background())
-		res := startWork(ctx, logger, conf, &holder)
+		res := startWork(ctx, logger, conf, holder)
 		StopThreads()
 		if res == ALLDEAD { //nolint // would require a lot of messing with break labels, not worth it
 			ctxL, stopListening := context.WithCancel(context.Background())
 			for i := 0; i < conf.MaxThreads; i++ {
-				go keepListening(ctxL, logger, &holder, conf.MsgBatchSize, i)
+				go keepListening(ctxL, holder, conf.MsgBatchSize, i)
 			}
 			logger.Errorln("Messages are no more going through, only listening and dumping.")
 			reader := bufio.NewReader(os.Stdin)
@@ -153,7 +139,7 @@ func StartWriting(logger *log.Logger, conf config.Config) {
 				break
 			}
 		} else if res == ALLRESTART {
-			logger.Infof("going to restart now")
+			logger.Infoln("going to restart now")
 		} else {
 			logger.Infoln("all good, all messages sent!")
 			break
@@ -203,7 +189,7 @@ func StartArbitr(logger *log.Logger, conf config.Config, holder *thread.ThreadsH
 		if attempts > conf.MaxDeadTimeOut {
 			break
 		}
-		retrySuccessfull = attemptConnect(conf.Kafka, conf.KafkaTopic, conf.KafkaPartition)
+		retrySuccessfull = attemptConnect(conf.Kafka, conf.KafkaTopic, 0)
 		if retrySuccessfull {
 			logger.Infof("success!")
 			ticker.Stop()

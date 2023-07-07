@@ -16,7 +16,8 @@ import (
 type Config struct {
 	Kafka                string `yaml:"kafka"`
 	KafkaTopic           string `yaml:"kafkaTopic"`
-	KafkaPartition       int    `yaml:"kafkaPartition"`
+	KafkaConsumerGroup   string `yaml:"kafkaConsumerGroup"`
+	ReadCommitInterval   int    `yaml:"readCommitInterval"`
 	MaxThreads           int    `yaml:"maxThreads"`
 	MaxMessagesPerThread int    `yaml:"maxMessagesPerThread"`
 	MsgBatchSize         int    `yaml:"msgBatchSize"`
