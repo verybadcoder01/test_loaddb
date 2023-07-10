@@ -30,12 +30,6 @@ func measureTimeAndPrintData(start time.Time, conf config.Config, totalMessages 
 	log.Infof("System proccessed about %f messages per minute", float64(totalMessages)/elapsed.Minutes())
 }
 
-/*
-	review:
-
-нет никакого graceful shutdown механизма
-что будет, если прервать выполнение программы?
-*/
 func main() {
 	conf := config.ParseConfig()
 	writerLogger := log.New()
@@ -61,8 +55,9 @@ func main() {
 	}
 	holder := thread.NewThreadsHolder(tmpMuList, tmpThreadsList, writerLogger)
 	ctx, cancel := context.WithCancel(context.Background())
-	defer measureTimeAndPrintData(start, conf, conf.Performance.MaxThreads*conf.Performance.MaxMessagesPerThread)
+	// TODO: somehow move writer to main and put closing here
 	closer.Bind(func() {
+		measureTimeAndPrintData(start, conf, conf.Performance.MaxThreads*conf.Performance.MaxMessagesPerThread)
 		writerLogger.Infoln("finishing up")
 		cancel()
 	})
