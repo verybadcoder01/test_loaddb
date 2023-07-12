@@ -6,11 +6,13 @@ import (
 	"sync"
 	"time"
 
-	"dbload/kafka/config"
+	"dbload/config"
 	"dbload/kafka/logger"
 	"dbload/kafka/producer/buffer"
 	"dbload/kafka/producer/internal"
 	"dbload/kafka/producer/thread"
+	"dbload/postgres/database"
+	"dbload/postgres/filler"
 	"github.com/segmentio/kafka-go"
 	log "github.com/sirupsen/logrus"
 	"github.com/xlab/closer"
@@ -36,12 +38,15 @@ func main() {
 	logger.SetupLogging(logger.NewLoggerConfig(conf.Logging.LogLevel, conf.Logging.ProducerLogPath, &log.TextFormatter{
 		PadLevelText: true, DisableColors: true, TimestampFormat: time.DateTime,
 	}), writerLogger)
+	dblogger := log.New()
+	logger.SetupLogging(logger.NewLoggerConfig(conf.Logging.LogLevel, conf.Logging.DbLogPath, &log.TextFormatter{
+		PadLevelText: true, DisableColors: true, TimestampFormat: time.DateTime,
+	}), dblogger)
 	// just a way to ping kafka
 	_, err := kafka.DialLeader(context.Background(), "tcp", conf.Kafka.Brokers[0], conf.Kafka.Topic, 0)
 	if err != nil {
 		log.Fatal("failed to dial leader:", err)
 	}
-	start := time.Now()
 	var tmpMuList []*sync.Mutex
 	var tmpThreadsList []thread.Thread
 	for i := 0; i < conf.Performance.MaxThreads; i++ {
@@ -55,13 +60,19 @@ func main() {
 	}
 	holder := thread.NewThreadsHolder(tmpMuList, tmpThreadsList, writerLogger)
 	ctx, cancel := context.WithCancel(context.Background())
+	// db is thread-safe: https://stackoverflow.com/questions/62943920/what-is-the-best-way-to-use-gorm-in-multithreaded-application
+	db := database.NewPgDatabase(conf.Database.DSN, dblogger)
+	dblogger.Infoln("successfully connected to database")
 	// TODO: somehow move writer to main and put closing here
 	closer.Bind(func() {
-		measureTimeAndPrintData(start, conf, conf.Performance.MaxThreads*conf.Performance.MaxMessagesPerThread)
+		//measureTimeAndPrintData(start, conf, conf.Performance.MaxThreads*conf.Performance.MaxMessagesPerThread)
 		writerLogger.Infoln("finishing up")
 		cancel()
 	})
-	internal.StartWriting(ctx, writerLogger, conf, &holder)
+	db.InitTables()
+	db.FillSupportTable(conf.Performance.MaxThreads, conf.Performance.MaxMessagesPerThread)
+	go filler.Fill(ctx, db)
+	internal.StartWriting(ctx, db, writerLogger, conf, &holder)
 	closer.Close()
 	closer.Hold()
 }

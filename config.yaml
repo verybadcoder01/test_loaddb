@@ -5,9 +5,11 @@ kafka:
 producer:
   msgBatchSize: 10
   writeTimeOutSec: 1
+database:
+  DSN: "postgres://postgres:example@localhost:5432/test"
 performance:
   maxThreads: 4
-  maxMessagesPerThread: 100000
+  maxMessagesPerThread: 10000
   maxDeadThreads: 2
   maxDeadTimeOut: 30
 consumer:
@@ -21,4 +23,5 @@ dumps:
 logging:
   producerLogPath: "./writer_log.txt"
   consumerLogPath: "./reader_log.txt"
-  logLevel: "info"
+  dbLogPath: "./db_log.txt"
+  logLevel: "debug"

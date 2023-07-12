@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"dbload/kafka/config"
+	"dbload/config"
 	"dbload/kafka/consumer/internal"
 	"dbload/kafka/logger"
 	"github.com/segmentio/kafka-go"
