@@ -11,9 +11,13 @@ import (
 	"dbload/kafka/producer/buffer"
 	"dbload/kafka/producer/internal"
 	"dbload/kafka/producer/thread"
+	"dbload/postgres/filler"
+	"dbload/postgres/migrator"
 	"github.com/segmentio/kafka-go"
 	log "github.com/sirupsen/logrus"
 	"github.com/xlab/closer"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
 /*
@@ -36,6 +40,10 @@ func main() {
 	logger.SetupLogging(logger.NewLoggerConfig(conf.Logging.LogLevel, conf.Logging.ProducerLogPath, &log.TextFormatter{
 		PadLevelText: true, DisableColors: true, TimestampFormat: time.DateTime,
 	}), writerLogger)
+	dblogger := log.New()
+	logger.SetupLogging(logger.NewLoggerConfig(conf.Logging.LogLevel, conf.Logging.DbLogPath, &log.TextFormatter{
+		PadLevelText: true, DisableColors: true, TimestampFormat: time.DateTime,
+	}), dblogger)
 	// just a way to ping kafka
 	_, err := kafka.DialLeader(context.Background(), "tcp", conf.Kafka.Brokers[0], conf.Kafka.Topic, 0)
 	if err != nil {
@@ -61,7 +69,14 @@ func main() {
 		writerLogger.Infoln("finishing up")
 		cancel()
 	})
-	internal.StartWriting(ctx, writerLogger, conf, &holder)
+	// db is thread-safe: https://stackoverflow.com/questions/62943920/what-is-the-best-way-to-use-gorm-in-multithreaded-application
+	db, err := gorm.Open(postgres.Open(conf.Database.DSN), &gorm.Config{})
+	if err != nil {
+		dblogger.Fatalln(err)
+	}
+	migrator.InitTables(db, dblogger)
+	go filler.Fill(ctx, db, dblogger)
+	internal.StartWriting(ctx, db, writerLogger, conf, &holder)
 	closer.Close()
 	closer.Hold()
 }

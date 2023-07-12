@@ -17,6 +17,9 @@ type Config struct {
 		MsgBatchSize    int `yaml:"msgBatchSize"`
 		WriteTimeOutSec int `yaml:"writeTimeOutSec"`
 	} `yaml:"producer"`
+	Database struct {
+		DSN string `yaml:"DSN"`
+	} `yaml:"database"`
 	Performance struct {
 		MaxThreads           int `yaml:"maxThreads"`
 		MaxMessagesPerThread int `yaml:"maxMessagesPerThread"`
@@ -36,6 +39,7 @@ type Config struct {
 	Logging struct {
 		ProducerLogPath string `yaml:"producerLogPath"`
 		ConsumerLogPath string `yaml:"consumerLogPath"`
+		DbLogPath       string `yaml:"dbLogPath"`
 		LogLevel        string `yaml:"logLevel"` // possible options are: trace, debug, info, warn, error, fatal, panic
 	} `yaml:"logging"`
 }

@@ -3,26 +3,17 @@ package internal
 import (
 	"bufio"
 	"context"
-	"fmt"
-	"math/rand"
 	"os"
 	"time"
 
 	"dbload/kafka/config"
 	"dbload/kafka/message"
 	"dbload/kafka/producer/thread"
+	"dbload/postgres/reader"
 	"github.com/segmentio/kafka-go"
 	log "github.com/sirupsen/logrus"
+	"gorm.io/gorm"
 )
-
-/*
-	review:
-
-По смыслу название похоже на GenerateMessage
-*/
-func GetMessage() message.Message {
-	return &message.SimpleMessage{Value: fmt.Sprintf("message %v\n", rand.Int())} //nolint //It just doesn't matter
-}
 
 // arbitr statuses
 const (
@@ -31,7 +22,7 @@ const (
 	ALLOK
 )
 
-func writeToKafka(ctx context.Context, logger *log.Logger, holder *thread.ThreadsHolder, writer *kafka.Writer, maxMsg int, batchSize int, threadID int) {
+func writeToKafka(ctx context.Context, db *gorm.DB, logger *log.Logger, holder *thread.ThreadsHolder, writer *kafka.Writer, maxMsg int, batchSize int, threadID int) {
 	defer holder.FinishThread(threadID)
 	for i := 0; i < maxMsg; {
 		select {
@@ -44,7 +35,7 @@ func writeToKafka(ctx context.Context, logger *log.Logger, holder *thread.Thread
 			prevBatch := holder.ReadBatchFromBuffer(threadID, batchSize)
 			for j := 0; j < batchSize; j++ {
 				// but we still have to fetch new messages
-				msg := GetMessage()
+				msg := reader.GetMessage(db, logger)
 				batch = append(batch, msg.ToKafkaMessage())
 				data = append(data, msg)
 			}
@@ -79,7 +70,7 @@ func writeToKafka(ctx context.Context, logger *log.Logger, holder *thread.Thread
 	close(holder.Threads[threadID].StatusChan)
 }
 
-func keepListening(ctx context.Context, holder *thread.ThreadsHolder, batchSz int, threadID int) {
+func keepListening(ctx context.Context, db *gorm.DB, logger *log.Logger, holder *thread.ThreadsHolder, batchSz int, threadID int) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -87,7 +78,7 @@ func keepListening(ctx context.Context, holder *thread.ThreadsHolder, batchSz in
 		default:
 			var data []message.Message
 			for i := 0; i < batchSz; i++ {
-				msg := GetMessage()
+				msg := reader.GetMessage(db, logger)
 				data = append(data, msg)
 			}
 			holder.AppendBuffer(threadID, data...)
@@ -95,7 +86,7 @@ func keepListening(ctx context.Context, holder *thread.ThreadsHolder, batchSz in
 	}
 }
 
-func startWork(ctx context.Context, logger *log.Logger, conf config.Config, holder *thread.ThreadsHolder) int {
+func startWork(ctx context.Context, logger *log.Logger, db *gorm.DB, conf config.Config, holder *thread.ThreadsHolder) int {
 	writer := &kafka.Writer{
 		Addr: kafka.TCP(conf.Kafka.Brokers[0]), Topic: conf.Kafka.Topic, Balancer: &kafka.Hash{},
 		WriteTimeout: time.Duration(conf.Producer.WriteTimeOutSec) * time.Second,
@@ -108,7 +99,7 @@ func startWork(ctx context.Context, logger *log.Logger, conf config.Config, hold
 		}
 	}(writer)
 	for i := 0; i < conf.Performance.MaxThreads; i++ {
-		go writeToKafka(ctx, logger, holder, writer, conf.Performance.MaxMessagesPerThread, conf.Producer.MsgBatchSize, i)
+		go writeToKafka(ctx, db, logger, holder, writer, conf.Performance.MaxMessagesPerThread, conf.Producer.MsgBatchSize, i)
 	}
 	arbitrResChan := make(chan int)
 	go StartArbitr(logger, conf, holder, arbitrResChan)
@@ -118,20 +109,20 @@ func startWork(ctx context.Context, logger *log.Logger, conf config.Config, hold
 	return res
 }
 
-func StartWriting(ctx context.Context, logger *log.Logger, conf config.Config, holder *thread.ThreadsHolder) {
+func StartWriting(ctx context.Context, db *gorm.DB, logger *log.Logger, conf config.Config, holder *thread.ThreadsHolder) {
 	for {
 		ctx, StopThreads := context.WithCancel(ctx)
-		res := startWork(ctx, logger, conf, holder)
+		res := startWork(ctx, logger, db, conf, holder)
 		StopThreads()
 		if res == ALLDEAD { //nolint // would require a lot of messing with break labels, not worth it
 			ctxL, stopListening := context.WithCancel(context.Background())
 			for i := 0; i < conf.Performance.MaxThreads; i++ {
-				go keepListening(ctxL, holder, conf.Producer.MsgBatchSize, i)
+				go keepListening(ctxL, db, logger, holder, conf.Producer.MsgBatchSize, i)
 			}
 			logger.Errorln("Messages are no more going through, only listening and dumping.")
-			reader := bufio.NewReader(os.Stdin)
+			cmdReader := bufio.NewReader(os.Stdin)
 			// until inputted will block and wait forever
-			command, _ := reader.ReadString('\n')
+			command, _ := cmdReader.ReadString('\n')
 			stopListening()
 			if command == "restart\n" {
 				logger.Infof("restart command read, starting now")
