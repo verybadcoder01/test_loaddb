@@ -7,6 +7,7 @@ producer:
   writeTimeOutSec: 1
 database:
   DSN: "postgres://postgres:example@localhost:5432/test"
+  createBatchSize: 100
 performance:
   maxThreads: 4
   maxMessagesPerThread: 10000

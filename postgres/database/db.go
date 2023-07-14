@@ -14,20 +14,21 @@ type Database interface {
 	FillSupportTable(cnt int, step int)
 	InitTables()
 	GetMessages(threadID int, size int) []message.Message
-	InsertMessage(m message.Message)
+	InsertMessages(m []message.Message)
 }
 
 type PgDatabase struct {
-	db     *gorm.DB
-	Logger *log.Logger
+	batchSz int
+	db      *gorm.DB
+	Logger  *log.Logger
 }
 
-func NewPgDatabase(dsn string, logger *log.Logger) Database {
+func NewPgDatabase(dsn string, batchSz int, logger *log.Logger) Database {
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		logger.Fatalln(err)
 	}
-	return &PgDatabase{db: db, Logger: logger}
+	return &PgDatabase{db: db, batchSz: batchSz, Logger: logger}
 }
 
 func (db *PgDatabase) InitTables() {
@@ -43,8 +44,12 @@ func (db *PgDatabase) FillSupportTable(cnt int, step int) {
 	}
 }
 
-func (db *PgDatabase) InsertMessage(m message.Message) {
-	err := db.db.Create(&models.MainTable{Value: m.GetValueForDump()})
+func (db *PgDatabase) InsertMessages(m []message.Message) {
+	toIns := make([]models.MainTable, len(m))
+	for i, msg := range m {
+		toIns[i].Value = msg.GetValueForDump()
+	}
+	err := db.db.CreateInBatches(toIns, db.batchSz)
 	if err.Error != nil {
 		db.Logger.Errorln(err.Error.Error())
 	}

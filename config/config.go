@@ -18,7 +18,8 @@ type Config struct {
 		WriteTimeOutSec int `yaml:"writeTimeOutSec"`
 	} `yaml:"producer"`
 	Database struct {
-		DSN string `yaml:"DSN"`
+		DSN             string `yaml:"DSN"`
+		CreateBatchSize int    `yaml:"createBatchSize"`
 	} `yaml:"database"`
 	Performance struct {
 		MaxThreads           int `yaml:"maxThreads"`

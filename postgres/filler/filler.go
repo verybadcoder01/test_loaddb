@@ -23,14 +23,17 @@ func RandString(n int) string {
 	return string(b)
 }
 
-func Fill(ctx context.Context, db database.Database) {
+func Fill(ctx context.Context, db database.Database, createBatchSize int) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		default:
-			// TODO: switch to creation in batches for performance
-			db.InsertMessage(&message.SimpleMessage{Value: RandString(100)})
+			var batch []message.Message
+			for i := 0; i < createBatchSize; i++ {
+				batch = append(batch, &message.SimpleMessage{Value: RandString(100)})
+			}
+			db.InsertMessages(batch)
 		}
 	}
 }
