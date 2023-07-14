@@ -5,6 +5,8 @@ kafka:
 producer:
   msgBatchSize: 10
   writeTimeOutSec: 1
+database:
+  DSN: "postgres://postgres:example@localhost:5432/test"
 performance:
   maxThreads: 4
   maxMessagesPerThread: 10000
