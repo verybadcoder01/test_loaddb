@@ -3,10 +3,13 @@ package internal
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 
 	"github.com/segmentio/kafka-go"
 	log "github.com/sirupsen/logrus"
 )
+
+var total int64
 
 func consume(ctx context.Context, logger *log.Logger, reader *kafka.Reader) {
 outer:
@@ -19,7 +22,8 @@ outer:
 				logger.Errorln("Error reading Kafka:", err)
 				break outer
 			} else {
-				logger.Infof("topic=%s, partition=%d, offset=%d, key=%s, value=%s", msg.Topic, msg.Partition, msg.Offset, msg.Key, msg.Value)
+				atomic.AddInt64(&total, 1)
+				logger.Infof("topic=%s, partition=%d, offset=%d, key=%s, value=%s, total=%d", msg.Topic, msg.Partition, msg.Offset, msg.Key, msg.Value, total)
 			}
 		}
 	}

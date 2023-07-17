@@ -66,14 +66,17 @@ func main() {
 	db := database.NewPgDatabase(conf.Database.DSN, conf.Database.CreateBatchSize, conf.Performance.MaxThreads, conf.Performance.MaxMessagesPerThread, dblogger)
 	dblogger.Infoln("successfully connected to database")
 	// TODO: somehow move writer to main and put closing here
+	start := time.Now()
 	closer.Bind(func() {
-		// measureTimeAndPrintData(start, conf, conf.Performance.MaxThreads*conf.Performance.MaxMessagesPerThread)
+		measureTimeAndPrintData(start, conf, conf.Performance.MaxThreads*conf.Performance.MaxMessagesPerThread)
 		writerLogger.Infoln("finishing up")
 		cancel()
 	})
 	db.InitTables()
 	db.FillSupportTable()
-	go filler.Fill(ctx, db, conf.Database.CreateBatchSize)
+	if conf.Database.CreateNewRows {
+		go filler.Fill(ctx, db, conf.Database.CreateBatchSize)
+	}
 	internal.StartWriting(ctx, db, writerLogger, conf, &holder)
 	closer.Close()
 	closer.Hold()

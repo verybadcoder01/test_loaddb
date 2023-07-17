@@ -22,6 +22,7 @@ type Config struct {
 	Database struct {
 		DSN             string `yaml:"DSN"`
 		CreateBatchSize int    `yaml:"createBatchSize"`
+		CreateNewRows   bool   `yaml:"createNewRows"`
 	} `yaml:"database"`
 	Performance struct {
 		MaxThreads           int `yaml:"maxThreads"`
