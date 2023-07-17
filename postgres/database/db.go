@@ -40,7 +40,7 @@ func (db *PgDatabase) InitTables() {
 func (db *PgDatabase) FillSupportTable(cnt int, step int) {
 	for i := 0; i < cnt; i++ {
 		// 0, step, 2 * step, ...
-		db.db.Create(&models.SupportTable{ID: i + 1, ValID: 1 + i*step})
+		db.db.Create(&models.SupportTable{ID: i + 1, CurValID: 1 + i*step, FirstValID: 1 + i*step})
 	}
 }
 
@@ -75,17 +75,18 @@ func (db *PgDatabase) GetMessages(threadID int, size int) []message.Message {
 	} else if err.Error != nil {
 		db.Logger.Errorln(err.Error.Error())
 	}
-	err = db.db.Find(&res, "id>=? AND id<?", cur.ValID, cur.ValID+size)
+	db.db.Find(&res, "id>=? AND id<?", cur.CurValID, cur.CurValID+size)
 	for countGood(res) < size {
-		err = db.db.Find(&res, "id>=? AND id<?", cur.ValID, cur.ValID+size)
+		err = db.db.Find(&res, "id>=? AND id<?", cur.CurValID, cur.CurValID+size)
 		if err.Error != nil {
 			db.Logger.Errorln(err.Error.Error())
 		}
 	}
 	for i, msg := range res {
-		final[i] = &message.SimpleMessage{Value: msg.Value}
+		final[i] = &message.TimestampedMessage{TimeStamp: msg.CreatedAt, Value: msg.Value}
 	}
-	cur.ValID = cur.ValID + size
+	cur.CurValID += size
+	// TODO: fix message duplication moving valids to proper values
 	db.db.Save(&cur)
 	return final
 }

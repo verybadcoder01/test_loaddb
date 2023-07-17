@@ -10,6 +10,7 @@ type MainTable struct {
 }
 
 type SupportTable struct {
-	ID    int `gorm:"primaryKey;autoIncrement:false"`
-	ValID int
+	ID         int `gorm:"primaryKey;autoIncrement:false"`
+	FirstValID int
+	CurValID   int
 }

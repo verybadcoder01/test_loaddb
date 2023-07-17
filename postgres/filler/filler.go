@@ -31,7 +31,7 @@ func Fill(ctx context.Context, db database.Database, createBatchSize int) {
 		default:
 			var batch []message.Message
 			for i := 0; i < createBatchSize; i++ {
-				batch = append(batch, &message.SimpleMessage{Value: RandString(100)})
+				batch = append(batch, &message.TimestampedMessage{Value: RandString(100)})
 			}
 			db.InsertMessages(batch)
 		}

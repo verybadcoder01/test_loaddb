@@ -14,8 +14,10 @@ type Config struct {
 		ConsumerGroup string   `yaml:"consumerGroup"`
 	} `yaml:"kafka"`
 	Producer struct {
-		MsgBatchSize    int `yaml:"msgBatchSize"`
-		WriteTimeOutSec int `yaml:"writeTimeOutSec"`
+		MsgBatchSize         int  `yaml:"msgBatchSize"`
+		SortedMsgBatchSize   int  `yaml:"sortedMsgBatchSize"`
+		WriteTimeOutSec      int  `yaml:"writeTimeOutSec"`
+		RequireTimestampSort bool `yaml:"requireTimestampSort"`
 	} `yaml:"producer"`
 	Database struct {
 		DSN             string `yaml:"DSN"`
@@ -40,9 +42,33 @@ type Config struct {
 	Logging struct {
 		ProducerLogPath string `yaml:"producerLogPath"`
 		ConsumerLogPath string `yaml:"consumerLogPath"`
-		DbLogPath       string `yaml:"dbLogPath"`
+		DBLogPath       string `yaml:"dbLogPath"`
 		LogLevel        string `yaml:"logLevel"` // possible options are: trace, debug, info, warn, error, fatal, panic
 	} `yaml:"logging"`
+}
+
+func ValidateConfig(conf Config) {
+	if conf.Producer.MsgBatchSize <= 0 {
+		log.Fatal("Wrong value for message batch size: must be >0!")
+	}
+	if conf.Producer.WriteTimeOutSec <= 0 {
+		log.Fatal("Wrong value for write timeout: must be >0 seconds!")
+	}
+	if conf.Database.CreateBatchSize <= 0 {
+		log.Fatal("Wrong value for database creation batch size: must be >0!")
+	}
+	if conf.Performance.MaxThreads <= 0 || conf.Performance.MaxDeadThreads <= 0 || conf.Performance.MaxMessagesPerThread <= 0 || conf.Performance.MaxDeadTimeOut <= 0 {
+		log.Fatal("All values in performance section must be >0!")
+	}
+	if conf.Performance.MaxMessagesPerThread%conf.Database.CreateBatchSize != 0 {
+		log.Fatal("messages per thread must be divisible with creation batch size")
+	}
+	if conf.Consumer.ReadCommitIntervalSec <= 0 {
+		log.Fatal("Wrong value for read commit interval: must be >0!")
+	}
+	if conf.Consumer.MinReadBytes > conf.Consumer.MaxReadBytes {
+		log.Fatal("Minimal read bytes must be <= maximum read bytes!")
+	}
 }
 
 func ParseConfig() Config {
@@ -55,5 +81,6 @@ func ParseConfig() Config {
 	if err != nil {
 		log.Fatal("cant unmarshall config " + err.Error())
 	}
+	ValidateConfig(conf)
 	return conf
 }

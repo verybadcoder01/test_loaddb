@@ -16,13 +16,13 @@ const (
 )
 
 type Thread struct {
-	isDone     bool
 	StatusChan chan Status
+	SorterChan chan []message.Message
 	msgBuffer  buffer.MessageBuffer
 }
 
-func NewThread(statusChan chan Status, buffer buffer.MessageBuffer) Thread {
-	return Thread{isDone: false, StatusChan: statusChan, msgBuffer: buffer}
+func NewThread(statusChan chan Status, sorterChan chan []message.Message, buffer buffer.MessageBuffer) Thread {
+	return Thread{StatusChan: statusChan, msgBuffer: buffer, SorterChan: sorterChan}
 }
 
 func (t *Thread) AppendBuffer(logger *log.Logger, msg ...message.Message) {
@@ -34,7 +34,9 @@ func (t *Thread) DumpBuffer(logger *log.Logger) {
 }
 
 func (t *Thread) FinishThread(logger *log.Logger) {
-	t.isDone = true
+	t.StatusChan <- FINISHED
+	close(t.StatusChan)
+	close(t.SorterChan)
 	t.DumpBuffer(logger)
 }
 

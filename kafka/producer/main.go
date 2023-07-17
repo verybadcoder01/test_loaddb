@@ -8,6 +8,7 @@ import (
 
 	"dbload/config"
 	"dbload/kafka/logger"
+	"dbload/kafka/message"
 	"dbload/kafka/producer/buffer"
 	"dbload/kafka/producer/internal"
 	"dbload/kafka/producer/thread"
@@ -39,7 +40,7 @@ func main() {
 		PadLevelText: true, DisableColors: true, TimestampFormat: time.DateTime,
 	}), writerLogger)
 	dblogger := log.New()
-	logger.SetupLogging(logger.NewLoggerConfig(conf.Logging.LogLevel, conf.Logging.DbLogPath, &log.TextFormatter{
+	logger.SetupLogging(logger.NewLoggerConfig(conf.Logging.LogLevel, conf.Logging.DBLogPath, &log.TextFormatter{
 		PadLevelText: true, DisableColors: true, TimestampFormat: time.DateTime,
 	}), dblogger)
 	// just a way to ping kafka
@@ -51,9 +52,10 @@ func main() {
 	var tmpThreadsList []thread.Thread
 	for i := 0; i < conf.Performance.MaxThreads; i++ {
 		s := make(chan thread.Status, 100)
+		c := make(chan []message.Message, conf.Producer.MsgBatchSize+1)
 		tmpMuList = append(tmpMuList, &sync.Mutex{})
 		tmpThreadsList = append(tmpThreadsList,
-			thread.NewThread(s,
+			thread.NewThread(s, c,
 				buffer.NewDequeBuffer(buffer.NewSimpleDumper(conf.Dumps.DumpDir+fmt.Sprintf("thread%v_dump.txt", i), int64(conf.Dumps.MaxDumpSize)),
 					conf.Dumps.MaxBufSize,
 				)))
@@ -65,7 +67,7 @@ func main() {
 	dblogger.Infoln("successfully connected to database")
 	// TODO: somehow move writer to main and put closing here
 	closer.Bind(func() {
-		//measureTimeAndPrintData(start, conf, conf.Performance.MaxThreads*conf.Performance.MaxMessagesPerThread)
+		// measureTimeAndPrintData(start, conf, conf.Performance.MaxThreads*conf.Performance.MaxMessagesPerThread)
 		writerLogger.Infoln("finishing up")
 		cancel()
 	})

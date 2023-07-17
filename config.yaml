@@ -1,12 +1,14 @@
 kafka:
-  brokers: ["localhost:29092"]
+  brokers: [ "localhost:29092" ]
   topic: "test-project"
   consumerGroup: "test-consumer-group"
 producer:
   msgBatchSize: 10
+  sortedMsgBatchSize: 200
   writeTimeOutSec: 1
+  requireTimestampSort: true
 database:
-  DSN: "postgres://postgres:example@localhost:5432/test"
+  DSN: "postgres://postgres:8Bm4e202@localhost:5432/test"
   createBatchSize: 100
 performance:
   maxThreads: 4
