@@ -11,24 +11,26 @@ import (
 )
 
 type Database interface {
-	FillSupportTable(cnt int, step int)
+	FillSupportTable()
 	InitTables()
 	GetMessages(threadID int, size int) []message.Message
 	InsertMessages(m []message.Message)
 }
 
 type PgDatabase struct {
-	batchSz int
-	db      *gorm.DB
-	Logger  *log.Logger
+	batchSz     int
+	readerCnt   int
+	bigPartSize int
+	db          *gorm.DB
+	Logger      *log.Logger
 }
 
-func NewPgDatabase(dsn string, batchSz int, logger *log.Logger) Database {
+func NewPgDatabase(dsn string, batchSz int, readerCnt int, bigPartSize int, logger *log.Logger) Database {
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		logger.Fatalln(err)
 	}
-	return &PgDatabase{db: db, batchSz: batchSz, Logger: logger}
+	return &PgDatabase{db: db, batchSz: batchSz, readerCnt: readerCnt, bigPartSize: bigPartSize, Logger: logger}
 }
 
 func (db *PgDatabase) InitTables() {
@@ -37,10 +39,13 @@ func (db *PgDatabase) InitTables() {
 	}
 }
 
-func (db *PgDatabase) FillSupportTable(cnt int, step int) {
-	for i := 0; i < cnt; i++ {
+func (db *PgDatabase) FillSupportTable() {
+	for i := 0; i < db.readerCnt; i++ {
 		// 0, step, 2 * step, ...
-		db.db.Create(&models.SupportTable{ID: i + 1, CurValID: 1 + i*step, FirstValID: 1 + i*step})
+		db.db.Create(&models.SupportTable{
+			ID: i + 1, CurValID: 1 + i*db.bigPartSize, FirstValID: 1 + i*db.bigPartSize,
+			LastValID: 1 + (i+1)*db.bigPartSize,
+		})
 	}
 }
 
@@ -86,7 +91,12 @@ func (db *PgDatabase) GetMessages(threadID int, size int) []message.Message {
 		final[i] = &message.TimestampedMessage{TimeStamp: msg.CreatedAt, Value: msg.Value}
 	}
 	cur.CurValID += size
-	// TODO: fix message duplication moving valids to proper values
+	if cur.CurValID >= cur.LastValID {
+		db.Logger.Debugln("finish big batch")
+		cur.FirstValID += db.readerCnt * db.bigPartSize
+		cur.CurValID = cur.FirstValID
+		cur.LastValID = cur.FirstValID + db.bigPartSize
+	}
 	db.db.Save(&cur)
 	return final
 }

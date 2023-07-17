@@ -63,7 +63,7 @@ func main() {
 	holder := thread.NewThreadsHolder(tmpMuList, tmpThreadsList, writerLogger)
 	ctx, cancel := context.WithCancel(context.Background())
 	// db is thread-safe: https://stackoverflow.com/questions/62943920/what-is-the-best-way-to-use-gorm-in-multithreaded-application
-	db := database.NewPgDatabase(conf.Database.DSN, conf.Database.CreateBatchSize, dblogger)
+	db := database.NewPgDatabase(conf.Database.DSN, conf.Database.CreateBatchSize, conf.Performance.MaxThreads, conf.Performance.MaxMessagesPerThread, dblogger)
 	dblogger.Infoln("successfully connected to database")
 	// TODO: somehow move writer to main and put closing here
 	closer.Bind(func() {
@@ -72,7 +72,7 @@ func main() {
 		cancel()
 	})
 	db.InitTables()
-	db.FillSupportTable(conf.Performance.MaxThreads, conf.Performance.MaxMessagesPerThread)
+	db.FillSupportTable()
 	go filler.Fill(ctx, db, conf.Database.CreateBatchSize)
 	internal.StartWriting(ctx, db, writerLogger, conf, &holder)
 	closer.Close()

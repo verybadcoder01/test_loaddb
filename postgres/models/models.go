@@ -13,4 +13,5 @@ type SupportTable struct {
 	ID         int `gorm:"primaryKey;autoIncrement:false"`
 	FirstValID int
 	CurValID   int
+	LastValID  int
 }

@@ -82,9 +82,21 @@ func writeToKafka(ctx context.Context, db database.Database, logger *log.Logger,
 
 func timeStampSorter(ctx context.Context, logger *log.Logger, writer *kafka.Writer, holder *thread.ThreadsHolder, sendBatchSize int) {
 	var cur []message.Message
+	sendCurrent := func() error {
+		km := make([]kafka.Message, len(cur))
+		for i, msg := range cur {
+			km[i] = msg.ToKafkaMessage()
+			km[i].Key = []byte(msg.GetTimestamp().String())
+		}
+		logger.Debugln("sending batch from timestamp sorter")
+		err := writer.WriteMessages(ctx, km...)
+		return err
+	}
 	for {
 		select {
 		case <-ctx.Done():
+			// finishing here, let's send what we have
+			_ = sendCurrent()
 			return
 		default:
 			for _, th := range holder.Threads {
@@ -92,14 +104,8 @@ func timeStampSorter(ctx context.Context, logger *log.Logger, writer *kafka.Writ
 			}
 			if len(cur) >= sendBatchSize {
 				sort.Slice(cur, func(i, j int) bool { return cur[i].GetTimestamp().Before(cur[j].GetTimestamp()) })
-				km := make([]kafka.Message, len(cur))
-				for i, msg := range cur {
-					km[i] = msg.ToKafkaMessage()
-					km[i].Key = []byte(msg.GetTimestamp().String())
-				}
+				err := sendCurrent()
 				cur = []message.Message{}
-				err := writer.WriteMessages(ctx, km...)
-				logger.Debugln("sending batch from timestamp sorter")
 				if err != nil {
 					logger.Errorln("error occurred in timestamp sorted while sending: " + err.Error())
 					// I guess that'll do
