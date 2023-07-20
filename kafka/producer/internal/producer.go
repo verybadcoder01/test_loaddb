@@ -105,14 +105,15 @@ func timeStampSorter(ctx context.Context, logger *log.Logger, writer *kafka.Writ
 			if len(cur) >= sendBatchSize {
 				sort.Slice(cur, func(i, j int) bool { return cur[i].GetTimestamp().Before(cur[j].GetTimestamp()) })
 				err := sendCurrent()
-				cur = []message.Message{}
 				if err != nil {
 					logger.Errorln("error occurred in timestamp sorted while sending: " + err.Error())
 					// I guess that'll do
 					for _, t := range holder.Threads {
 						t.StatusChan <- thread.DEAD
 					}
+					holder.Threads[0].AppendBuffer(logger, cur...)
 				}
+				cur = []message.Message{}
 			}
 		}
 	}

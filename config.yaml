@@ -20,6 +20,9 @@ consumer:
   readCommitIntervalSec: 1
   minReadBytes: 1000
   maxReadBytes: 10000000
+tarantool:
+  user: "guest"
+  host: "localhost:3301"
 dumps:
   dumpDir: "./dumps/"
   maxDumpSize: 16

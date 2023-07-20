@@ -9,6 +9,7 @@ import (
 	"dbload/kafka/logger"
 	"github.com/segmentio/kafka-go"
 	log "github.com/sirupsen/logrus"
+	"github.com/tarantool/go-tarantool/v2"
 	"github.com/xlab/closer"
 )
 
@@ -28,7 +29,15 @@ func main() {
 		CommitInterval: time.Duration(conf.Consumer.ReadCommitIntervalSec) * time.Second,
 	})
 	ctx, cancel := context.WithCancel(context.Background())
+	opts := tarantool.Opts{User: conf.Tarantool.User}
+	conn, err := tarantool.Connect(conf.Tarantool.Host, opts)
+	if err != nil {
+		readerLogger.Fatalln(err)
+	}
 	closer.Bind(func() {
+		if err := conn.Close(); err != nil {
+			readerLogger.Errorln(err)
+		}
 		if err := reader.Close(); err != nil {
 			readerLogger.Errorln(err)
 		}
