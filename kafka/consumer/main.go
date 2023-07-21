@@ -7,6 +7,7 @@ import (
 	"dbload/config"
 	"dbload/kafka/consumer/internal"
 	"dbload/kafka/logger"
+	tarantooldb "dbload/tarantool"
 	"github.com/segmentio/kafka-go"
 	log "github.com/sirupsen/logrus"
 	"github.com/tarantool/go-tarantool/v2"
@@ -29,13 +30,10 @@ func main() {
 		CommitInterval: time.Duration(conf.Consumer.ReadCommitIntervalSec) * time.Second,
 	})
 	ctx, cancel := context.WithCancel(context.Background())
-	opts := tarantool.Opts{User: conf.Tarantool.User}
-	conn, err := tarantool.Connect(conf.Tarantool.Host, opts)
-	if err != nil {
-		readerLogger.Fatalln(err)
-	}
+	opts := tarantool.Opts{User: conf.Tarantool.User, Pass: conf.Tarantool.Password}
+	db := tarantooldb.NewSpace(readerLogger, conf.Tarantool.Space, conf.Tarantool.Host, opts)
 	closer.Bind(func() {
-		if err := conn.Close(); err != nil {
+		if err := db.Close(); err != nil {
 			readerLogger.Errorln(err)
 		}
 		if err := reader.Close(); err != nil {
@@ -44,7 +42,9 @@ func main() {
 		cancel()
 		readerLogger.Infoln("finishing up")
 	})
-	internal.StartConsuming(ctx, conf.Performance.MaxThreads, readerLogger, reader)
+	readerLogger.SetReportCaller(true)
+	db.SetupSpace()
+	internal.StartConsuming(ctx, &db, conf.Performance.MaxThreads, conf.Tarantool.BatchSize, reader)
 	closer.Close()
 	closer.Hold()
 }

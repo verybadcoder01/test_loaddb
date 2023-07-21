@@ -8,9 +8,9 @@ producer:
   writeTimeOutSec: 1
   requireTimestampSort: true
 database:
-  DSN: "postgres://postgres:example@localhost:5432/test"
+  DSN: "postgres://postgres:8Bm4e202@localhost:5432/test"
   createBatchSize: 1000
-  createNewRows: false
+  createNewRows: true
 performance:
   maxThreads: 8
   maxMessagesPerThread: 100000
@@ -21,8 +21,11 @@ consumer:
   minReadBytes: 1000
   maxReadBytes: 10000000
 tarantool:
-  user: "guest"
+  user: "admin"
+  password: "password"
   host: "localhost:3301"
+  batchSize: 500
+  space: "messages"
 dumps:
   dumpDir: "./dumps/"
   maxDumpSize: 16

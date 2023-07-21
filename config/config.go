@@ -36,8 +36,11 @@ type Config struct {
 		MaxReadBytes          int `yaml:"maxReadBytes"`
 	} `yaml:"consumer"`
 	Tarantool struct {
-		User string `yaml:"user"`
-		Host string `yaml:"host"`
+		User      string `yaml:"user"`
+		Password  string `yaml:"password"`
+		Host      string `yaml:"host"`
+		BatchSize int    `yaml:"batchSize"`
+		Space     string `yaml:"space"`
 	} `yaml:"tarantool"`
 	Dumps struct {
 		DumpDir     string `yaml:"dumpDir"`
