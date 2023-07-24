@@ -27,7 +27,7 @@ func writeToKafka(ctx context.Context, db database.Database, logger *log.Logger,
 		logger.Debugf("thread %v send finishing signal", threadID)
 		holder.FinishThread(threadID)
 	}(holder)
-	for i := 0; i < maxMsg; {
+	for i := 0; i <= maxMsg; {
 		select {
 		case <-ctx.Done():
 			return

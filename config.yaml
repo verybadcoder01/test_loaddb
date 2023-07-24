@@ -8,7 +8,7 @@ producer:
   writeTimeOutSec: 1
   requireTimestampSort: true
 database:
-  DSN: "postgres://postgres:8Bm4e202@localhost:5432/test"
+  DSN: "postgres://postgres:example@localhost:5432/test"
   createBatchSize: 1000
   createNewRows: true
 performance:
@@ -25,6 +25,7 @@ tarantool:
   password: "password"
   host: "localhost:3301"
   batchSize: 500
+  massInsertFunc: "mass_insertion"
   space: "messages"
 dumps:
   dumpDir: "./dumps/"

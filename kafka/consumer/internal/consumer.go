@@ -4,18 +4,17 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"sync/atomic"
 
 	tarantooldb "dbload/tarantool"
 	"github.com/segmentio/kafka-go"
+	log "github.com/sirupsen/logrus"
+	"github.com/tarantool/go-tarantool/v2/datetime"
 )
 
-var total int64
-
-func consume(ctx context.Context, db *tarantooldb.Tarantool, reader *kafka.Reader, batchSz int) {
+func consume(ctx context.Context, db *tarantooldb.Tarantool, reader *kafka.Reader, batchSz int, maxMsg int) {
 	var batch []tarantooldb.Tuple
 outer:
-	for {
+	for i := 0; i < maxMsg; i++ {
 		select {
 		case <-ctx.Done():
 			return
@@ -24,10 +23,13 @@ outer:
 				db.Logger.Errorln("Error reading Kafka:", err)
 				break outer
 			} else {
-				atomic.AddInt64(&total, 1)
+				dt, err := datetime.MakeDatetime(msg.Time)
+				if err != nil {
+					log.Errorln("can not parse time to datetime: " + err.Error())
+				}
 				batch = append(batch, tarantooldb.Tuple{
-					Time:  msg.Time,
-					Value: fmt.Sprintf("value=%s, total=%d", msg.Value, total),
+					Time:  dt,
+					Value: fmt.Sprintf("value=%s", msg.Value),
 				})
 				if len(batch) >= batchSz {
 					err = db.InsertData(batch)
@@ -43,13 +45,13 @@ outer:
 	}
 }
 
-func StartConsuming(ctx context.Context, db *tarantooldb.Tarantool, maxThreads int, tBatchSz int, reader *kafka.Reader) {
+func StartConsuming(ctx context.Context, db *tarantooldb.Tarantool, maxThreads, tBatchSz, maxMsg int, reader *kafka.Reader) {
 	wg := sync.WaitGroup{}
 	wg.Add(maxThreads)
 	// context leaves place for further management
 	ctx, cancel := context.WithCancel(ctx)
 	for i := 0; i < maxThreads; i++ {
-		go func() { consume(ctx, db, reader, tBatchSz); wg.Done() }()
+		go func() { consume(ctx, db, reader, tBatchSz, maxMsg); wg.Done() }()
 	}
 	wg.Wait()
 	cancel()

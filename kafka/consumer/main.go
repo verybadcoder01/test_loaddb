@@ -14,6 +14,13 @@ import (
 	"github.com/xlab/closer"
 )
 
+func measureTimeAndPrintData(start time.Time, conf config.Config, totalMessages int) {
+	elapsed := time.Since(start)
+	log.Infof("Writing %v messages in every thread using %v threads, so a total of %v messages took %s", conf.Performance.MaxMessagesPerThread, conf.Performance.MaxThreads, totalMessages, elapsed)
+	log.Infof("So writing one message took about %v milliseconds", float32(elapsed.Milliseconds())/float32(totalMessages))
+	log.Infof("System proccessed about %f messages per minute", float64(totalMessages)/elapsed.Minutes())
+}
+
 func main() {
 	conf := config.ParseConfig()
 	readerLogger := log.New()
@@ -31,8 +38,10 @@ func main() {
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	opts := tarantool.Opts{User: conf.Tarantool.User, Pass: conf.Tarantool.Password}
-	db := tarantooldb.NewSpace(readerLogger, conf.Tarantool.Space, conf.Tarantool.Host, opts)
+	db := tarantooldb.NewConnection(readerLogger, conf.Tarantool.Space, conf.Tarantool.Host, conf.Tarantool.MassInsertFunc, opts)
+	start := time.Now()
 	closer.Bind(func() {
+		measureTimeAndPrintData(start, conf, conf.Performance.MaxThreads*conf.Performance.MaxMessagesPerThread)
 		if err := db.Close(); err != nil {
 			readerLogger.Errorln(err)
 		}
@@ -42,9 +51,7 @@ func main() {
 		cancel()
 		readerLogger.Infoln("finishing up")
 	})
-	readerLogger.SetReportCaller(true)
-	db.SetupSpace()
-	internal.StartConsuming(ctx, &db, conf.Performance.MaxThreads, conf.Tarantool.BatchSize, reader)
+	internal.StartConsuming(ctx, &db, conf.Performance.MaxThreads, conf.Tarantool.BatchSize, conf.Performance.MaxMessagesPerThread, reader)
 	closer.Close()
 	closer.Hold()
 }
