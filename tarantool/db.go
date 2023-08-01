@@ -5,13 +5,13 @@ import (
 
 	log "github.com/sirupsen/logrus"
 	"github.com/tarantool/go-tarantool/v2"
-	. "github.com/tarantool/go-tarantool/v2/datetime"
+	"github.com/tarantool/go-tarantool/v2/datetime"
 )
 
 type Tuple struct {
 	_msgpack struct{} `msgpack:",asArray"` //nolint // that's the doc
 	Value    string
-	Time     Datetime
+	Time     datetime.Datetime
 }
 
 type Tarantool struct {
